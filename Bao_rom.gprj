@@ -1,0 +1,28 @@
+<?xml version="1" encoding="UTF-8"?>
+<!DOCTYPE gowin-fpga-project>
+<Project>
+    <Template>FPGA</Template>
+    <Version>5</Version>
+    <Device name="GW5A-25A" pn="GW5A-LV25UG324C2/I1">gw5a25a-008</Device>
+    <FileList>
+        <File path="src/adc_interface.v" type="file.verilog" enable="1"/>
+        <File path="src/ai_classifier.v" type="file.verilog" enable="1"/>
+        <File path="src/apb_slave_if.v" type="file.verilog" enable="1"/>
+        <File path="src/control_fsm.v" type="file.verilog" enable="1"/>
+        <File path="src/demo_apb_seq.v" type="file.verilog" enable="1"/>
+        <File path="src/demo_uart_packetizer.v" type="file.verilog" enable="1"/>
+        <File path="src/ecg_rom.v" type="file.verilog" enable="1"/>
+        <File path="src/feature_extraction.v" type="file.verilog" enable="1"/>
+        <File path="src/gowin_dpb/gowin_dpb.v" type="file.verilog" enable="1"/>
+        <File path="src/gowin_sdpb/gowin_sdpb.v" type="file.verilog" enable="1"/>
+        <File path="src/sample_pacer.v" type="file.verilog" enable="1"/>
+        <File path="src/top_ecg_acg525_board.v" type="file.verilog" enable="1"/>
+        <File path="src/top_ecg_rom_demo.v" type="file.verilog" enable="1"/>
+        <File path="src/uart_tx.v" type="file.verilog" enable="1"/>
+        <File path="src/window_buffer.v" type="file.verilog" enable="1"/>
+        <File path="src/ecg_rom.hex" type="file.other" enable="1"/>
+        <File path="src/golden_model.py" type="file.other" enable="1"/>
+        <File path="src/uart_decode.py" type="file.other" enable="1"/>
+        <File path="src/weight.mi" type="file.other" enable="1"/>
+    </FileList>
+</Project>

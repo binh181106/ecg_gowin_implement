@@ -1,0 +1,24 @@
+Reading netlist file: "D:\FPT\Semester4\FAP201\Bao_rom\impl\gwsynthesis\Bao_rom.vg"
+Parsing netlist file "D:\FPT\Semester4\FAP201\Bao_rom\impl\gwsynthesis\Bao_rom.vg" completed
+Processing netlist completed
+Running placement......
+[10%] Placement Phase 0 completed
+[20%] Placement Phase 1 completed
+[30%] Placement Phase 2 completed
+[50%] Placement Phase 3 completed
+Running routing......
+[60%] Routing Phase 0 completed
+[70%] Routing Phase 1 completed
+[80%] Routing Phase 2 completed
+[90%] Routing Phase 3 completed
+Running timing analysis......
+[95%] Timing analysis completed
+Placement and routing completed
+Bitstream generation in progress......
+Bitstream generation completed
+Generate file "D:\FPT\Semester4\FAP201\Bao_rom\impl\pnr\Bao_rom.pin.html" completed
+Generate file "D:\FPT\Semester4\FAP201\Bao_rom\impl\pnr\Bao_rom.rpt.html" completed
+Generate file "D:\FPT\Semester4\FAP201\Bao_rom\impl\pnr\Bao_rom.rpt.txt" completed
+Generate file "D:\FPT\Semester4\FAP201\Bao_rom\impl\pnr\Bao_rom.tr.html" completed
+Thu Nov  5 22:42:06 2026
+

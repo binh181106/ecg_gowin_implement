@@ -1,0 +1,11 @@
+-d D:\FPT\Semester4\FAP201\Bao_rom\impl\gwsynthesis\Bao_rom.vg
+-p GW5A-25A-UBGA324-2
+-pn GW5A-LV25UG324C2/I1
+-cfg D:\FPT\Semester4\FAP201\Bao_rom\impl\pnr\device.cfg
+-bit
+-tr
+-ph
+-timing
+-cst_error
+-correct_hold 1
+-route_maxfan 23

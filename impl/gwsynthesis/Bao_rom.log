@@ -1,0 +1,38 @@
+GowinSynthesis start
+Running parser ...
+Analyzing Verilog file 'D:\FPT\Semester4\FAP201\Bao_rom\src\adc_interface.v'
+Analyzing Verilog file 'D:\FPT\Semester4\FAP201\Bao_rom\src\ai_classifier.v'
+Analyzing Verilog file 'D:\FPT\Semester4\FAP201\Bao_rom\src\apb_slave_if.v'
+Analyzing Verilog file 'D:\FPT\Semester4\FAP201\Bao_rom\src\control_fsm.v'
+Analyzing Verilog file 'D:\FPT\Semester4\FAP201\Bao_rom\src\demo_apb_seq.v'
+Analyzing Verilog file 'D:\FPT\Semester4\FAP201\Bao_rom\src\demo_uart_packetizer.v'
+Analyzing Verilog file 'D:\FPT\Semester4\FAP201\Bao_rom\src\ecg_rom.v'
+Analyzing Verilog file 'D:\FPT\Semester4\FAP201\Bao_rom\src\feature_extraction.v'
+Analyzing Verilog file 'D:\FPT\Semester4\FAP201\Bao_rom\src\sample_pacer.v'
+Analyzing Verilog file 'D:\FPT\Semester4\FAP201\Bao_rom\src\top_ecg_acg525_board.v'
+Analyzing Verilog file 'D:\FPT\Semester4\FAP201\Bao_rom\src\top_ecg_rom_demo.v'
+Analyzing Verilog file 'D:\FPT\Semester4\FAP201\Bao_rom\src\uart_tx.v'
+Analyzing Verilog file 'D:\FPT\Semester4\FAP201\Bao_rom\src\window_buffer.v'
+Analyzing Verilog file 'D:\FPT\Semester4\FAP201\Bao_rom\src\gowin_dpb\gowin_dpb.v'
+Analyzing Verilog file 'D:\FPT\Semester4\FAP201\Bao_rom\src\gowin_sdpb\gowin_sdpb.v'
+Compiling module 'Gowin_DPB'("D:\FPT\Semester4\FAP201\Bao_rom\src\gowin_dpb\gowin_dpb.v":10)
+NOTE  (EX0101) : Current top module is "Gowin_DPB"
+[5%] Running netlist conversion ...
+Running device independent optimization ...
+[10%] Optimizing Phase 0 completed
+[15%] Optimizing Phase 1 completed
+[25%] Optimizing Phase 2 completed
+Running inference ...
+[30%] Inferring Phase 0 completed
+[40%] Inferring Phase 1 completed
+[50%] Inferring Phase 2 completed
+[55%] Inferring Phase 3 completed
+Running technical mapping ...
+[60%] Tech-Mapping Phase 0 completed
+[65%] Tech-Mapping Phase 1 completed
+[75%] Tech-Mapping Phase 2 completed
+[80%] Tech-Mapping Phase 3 completed
+[90%] Tech-Mapping Phase 4 completed
+[95%] Generate netlist file "D:\FPT\Semester4\FAP201\Bao_rom\impl\gwsynthesis\Bao_rom.vg" completed
+[100%] Generate report file "D:\FPT\Semester4\FAP201\Bao_rom\impl\gwsynthesis\Bao_rom_syn.rpt.html" completed
+GowinSynthesis finish

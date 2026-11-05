@@ -1,0 +1,485 @@
+//
+//Written by GowinSynthesis
+//Tool Version "V1.9.9 (64-bit)"
+//Thu Nov  5 22:41:23 2026
+
+//Source file index table:
+//file0 "\D:/FPT/Semester4/FAP201/Bao_rom/src/adc_interface.v"
+//file1 "\D:/FPT/Semester4/FAP201/Bao_rom/src/ai_classifier.v"
+//file2 "\D:/FPT/Semester4/FAP201/Bao_rom/src/apb_slave_if.v"
+//file3 "\D:/FPT/Semester4/FAP201/Bao_rom/src/control_fsm.v"
+//file4 "\D:/FPT/Semester4/FAP201/Bao_rom/src/demo_apb_seq.v"
+//file5 "\D:/FPT/Semester4/FAP201/Bao_rom/src/demo_uart_packetizer.v"
+//file6 "\D:/FPT/Semester4/FAP201/Bao_rom/src/ecg_rom.v"
+//file7 "\D:/FPT/Semester4/FAP201/Bao_rom/src/feature_extraction.v"
+//file8 "\D:/FPT/Semester4/FAP201/Bao_rom/src/sample_pacer.v"
+//file9 "\D:/FPT/Semester4/FAP201/Bao_rom/src/top_ecg_acg525_board.v"
+//file10 "\D:/FPT/Semester4/FAP201/Bao_rom/src/top_ecg_rom_demo.v"
+//file11 "\D:/FPT/Semester4/FAP201/Bao_rom/src/uart_tx.v"
+//file12 "\D:/FPT/Semester4/FAP201/Bao_rom/src/window_buffer.v"
+//file13 "\D:/FPT/Semester4/FAP201/Bao_rom/src/gowin_dpb/gowin_dpb.v"
+//file14 "\D:/FPT/Semester4/FAP201/Bao_rom/src/gowin_sdpb/gowin_sdpb.v"
+`timescale 100 ps/100 ps
+module Gowin_DPB (
+  douta,
+  doutb,
+  clka,
+  ocea,
+  cea,
+  reseta,
+  wrea,
+  clkb,
+  oceb,
+  ceb,
+  resetb,
+  wreb,
+  ada,
+  dina,
+  adb,
+  dinb
+)
+;
+output [15:0] douta;
+output [15:0] doutb;
+input clka;
+input ocea;
+input cea;
+input reseta;
+input wrea;
+input clkb;
+input oceb;
+input ceb;
+input resetb;
+input wreb;
+input [7:0] ada;
+input [15:0] dina;
+input [7:0] adb;
+input [15:0] dinb;
+wire clka_d;
+wire ocea_d;
+wire cea_d;
+wire reseta_d;
+wire wrea_d;
+wire clkb_d;
+wire oceb_d;
+wire ceb_d;
+wire resetb_d;
+wire wreb_d;
+wire [7:0] ada_d;
+wire [15:0] dina_d;
+wire [7:0] adb_d;
+wire [15:0] dinb_d;
+wire [15:0] douta_d;
+wire [15:0] doutb_d;
+wire VCC;
+wire GND;
+  IBUF clka_ibuf (
+    .O(clka_d),
+    .I(clka) 
+);
+  IBUF ocea_ibuf (
+    .O(ocea_d),
+    .I(ocea) 
+);
+  IBUF cea_ibuf (
+    .O(cea_d),
+    .I(cea) 
+);
+  IBUF reseta_ibuf (
+    .O(reseta_d),
+    .I(reseta) 
+);
+  IBUF wrea_ibuf (
+    .O(wrea_d),
+    .I(wrea) 
+);
+  IBUF clkb_ibuf (
+    .O(clkb_d),
+    .I(clkb) 
+);
+  IBUF oceb_ibuf (
+    .O(oceb_d),
+    .I(oceb) 
+);
+  IBUF ceb_ibuf (
+    .O(ceb_d),
+    .I(ceb) 
+);
+  IBUF resetb_ibuf (
+    .O(resetb_d),
+    .I(resetb) 
+);
+  IBUF wreb_ibuf (
+    .O(wreb_d),
+    .I(wreb) 
+);
+  IBUF ada_0_ibuf (
+    .O(ada_d[0]),
+    .I(ada[0]) 
+);
+  IBUF ada_1_ibuf (
+    .O(ada_d[1]),
+    .I(ada[1]) 
+);
+  IBUF ada_2_ibuf (
+    .O(ada_d[2]),
+    .I(ada[2]) 
+);
+  IBUF ada_3_ibuf (
+    .O(ada_d[3]),
+    .I(ada[3]) 
+);
+  IBUF ada_4_ibuf (
+    .O(ada_d[4]),
+    .I(ada[4]) 
+);
+  IBUF ada_5_ibuf (
+    .O(ada_d[5]),
+    .I(ada[5]) 
+);
+  IBUF ada_6_ibuf (
+    .O(ada_d[6]),
+    .I(ada[6]) 
+);
+  IBUF ada_7_ibuf (
+    .O(ada_d[7]),
+    .I(ada[7]) 
+);
+  IBUF dina_0_ibuf (
+    .O(dina_d[0]),
+    .I(dina[0]) 
+);
+  IBUF dina_1_ibuf (
+    .O(dina_d[1]),
+    .I(dina[1]) 
+);
+  IBUF dina_2_ibuf (
+    .O(dina_d[2]),
+    .I(dina[2]) 
+);
+  IBUF dina_3_ibuf (
+    .O(dina_d[3]),
+    .I(dina[3]) 
+);
+  IBUF dina_4_ibuf (
+    .O(dina_d[4]),
+    .I(dina[4]) 
+);
+  IBUF dina_5_ibuf (
+    .O(dina_d[5]),
+    .I(dina[5]) 
+);
+  IBUF dina_6_ibuf (
+    .O(dina_d[6]),
+    .I(dina[6]) 
+);
+  IBUF dina_7_ibuf (
+    .O(dina_d[7]),
+    .I(dina[7]) 
+);
+  IBUF dina_8_ibuf (
+    .O(dina_d[8]),
+    .I(dina[8]) 
+);
+  IBUF dina_9_ibuf (
+    .O(dina_d[9]),
+    .I(dina[9]) 
+);
+  IBUF dina_10_ibuf (
+    .O(dina_d[10]),
+    .I(dina[10]) 
+);
+  IBUF dina_11_ibuf (
+    .O(dina_d[11]),
+    .I(dina[11]) 
+);
+  IBUF dina_12_ibuf (
+    .O(dina_d[12]),
+    .I(dina[12]) 
+);
+  IBUF dina_13_ibuf (
+    .O(dina_d[13]),
+    .I(dina[13]) 
+);
+  IBUF dina_14_ibuf (
+    .O(dina_d[14]),
+    .I(dina[14]) 
+);
+  IBUF dina_15_ibuf (
+    .O(dina_d[15]),
+    .I(dina[15]) 
+);
+  IBUF adb_0_ibuf (
+    .O(adb_d[0]),
+    .I(adb[0]) 
+);
+  IBUF adb_1_ibuf (
+    .O(adb_d[1]),
+    .I(adb[1]) 
+);
+  IBUF adb_2_ibuf (
+    .O(adb_d[2]),
+    .I(adb[2]) 
+);
+  IBUF adb_3_ibuf (
+    .O(adb_d[3]),
+    .I(adb[3]) 
+);
+  IBUF adb_4_ibuf (
+    .O(adb_d[4]),
+    .I(adb[4]) 
+);
+  IBUF adb_5_ibuf (
+    .O(adb_d[5]),
+    .I(adb[5]) 
+);
+  IBUF adb_6_ibuf (
+    .O(adb_d[6]),
+    .I(adb[6]) 
+);
+  IBUF adb_7_ibuf (
+    .O(adb_d[7]),
+    .I(adb[7]) 
+);
+  IBUF dinb_0_ibuf (
+    .O(dinb_d[0]),
+    .I(dinb[0]) 
+);
+  IBUF dinb_1_ibuf (
+    .O(dinb_d[1]),
+    .I(dinb[1]) 
+);
+  IBUF dinb_2_ibuf (
+    .O(dinb_d[2]),
+    .I(dinb[2]) 
+);
+  IBUF dinb_3_ibuf (
+    .O(dinb_d[3]),
+    .I(dinb[3]) 
+);
+  IBUF dinb_4_ibuf (
+    .O(dinb_d[4]),
+    .I(dinb[4]) 
+);
+  IBUF dinb_5_ibuf (
+    .O(dinb_d[5]),
+    .I(dinb[5]) 
+);
+  IBUF dinb_6_ibuf (
+    .O(dinb_d[6]),
+    .I(dinb[6]) 
+);
+  IBUF dinb_7_ibuf (
+    .O(dinb_d[7]),
+    .I(dinb[7]) 
+);
+  IBUF dinb_8_ibuf (
+    .O(dinb_d[8]),
+    .I(dinb[8]) 
+);
+  IBUF dinb_9_ibuf (
+    .O(dinb_d[9]),
+    .I(dinb[9]) 
+);
+  IBUF dinb_10_ibuf (
+    .O(dinb_d[10]),
+    .I(dinb[10]) 
+);
+  IBUF dinb_11_ibuf (
+    .O(dinb_d[11]),
+    .I(dinb[11]) 
+);
+  IBUF dinb_12_ibuf (
+    .O(dinb_d[12]),
+    .I(dinb[12]) 
+);
+  IBUF dinb_13_ibuf (
+    .O(dinb_d[13]),
+    .I(dinb[13]) 
+);
+  IBUF dinb_14_ibuf (
+    .O(dinb_d[14]),
+    .I(dinb[14]) 
+);
+  IBUF dinb_15_ibuf (
+    .O(dinb_d[15]),
+    .I(dinb[15]) 
+);
+  OBUF douta_0_obuf (
+    .O(douta[0]),
+    .I(douta_d[0]) 
+);
+  OBUF douta_1_obuf (
+    .O(douta[1]),
+    .I(douta_d[1]) 
+);
+  OBUF douta_2_obuf (
+    .O(douta[2]),
+    .I(douta_d[2]) 
+);
+  OBUF douta_3_obuf (
+    .O(douta[3]),
+    .I(douta_d[3]) 
+);
+  OBUF douta_4_obuf (
+    .O(douta[4]),
+    .I(douta_d[4]) 
+);
+  OBUF douta_5_obuf (
+    .O(douta[5]),
+    .I(douta_d[5]) 
+);
+  OBUF douta_6_obuf (
+    .O(douta[6]),
+    .I(douta_d[6]) 
+);
+  OBUF douta_7_obuf (
+    .O(douta[7]),
+    .I(douta_d[7]) 
+);
+  OBUF douta_8_obuf (
+    .O(douta[8]),
+    .I(douta_d[8]) 
+);
+  OBUF douta_9_obuf (
+    .O(douta[9]),
+    .I(douta_d[9]) 
+);
+  OBUF douta_10_obuf (
+    .O(douta[10]),
+    .I(douta_d[10]) 
+);
+  OBUF douta_11_obuf (
+    .O(douta[11]),
+    .I(douta_d[11]) 
+);
+  OBUF douta_12_obuf (
+    .O(douta[12]),
+    .I(douta_d[12]) 
+);
+  OBUF douta_13_obuf (
+    .O(douta[13]),
+    .I(douta_d[13]) 
+);
+  OBUF douta_14_obuf (
+    .O(douta[14]),
+    .I(douta_d[14]) 
+);
+  OBUF douta_15_obuf (
+    .O(douta[15]),
+    .I(douta_d[15]) 
+);
+  OBUF doutb_0_obuf (
+    .O(doutb[0]),
+    .I(doutb_d[0]) 
+);
+  OBUF doutb_1_obuf (
+    .O(doutb[1]),
+    .I(doutb_d[1]) 
+);
+  OBUF doutb_2_obuf (
+    .O(doutb[2]),
+    .I(doutb_d[2]) 
+);
+  OBUF doutb_3_obuf (
+    .O(doutb[3]),
+    .I(doutb_d[3]) 
+);
+  OBUF doutb_4_obuf (
+    .O(doutb[4]),
+    .I(doutb_d[4]) 
+);
+  OBUF doutb_5_obuf (
+    .O(doutb[5]),
+    .I(doutb_d[5]) 
+);
+  OBUF doutb_6_obuf (
+    .O(doutb[6]),
+    .I(doutb_d[6]) 
+);
+  OBUF doutb_7_obuf (
+    .O(doutb[7]),
+    .I(doutb_d[7]) 
+);
+  OBUF doutb_8_obuf (
+    .O(doutb[8]),
+    .I(doutb_d[8]) 
+);
+  OBUF doutb_9_obuf (
+    .O(doutb[9]),
+    .I(doutb_d[9]) 
+);
+  OBUF doutb_10_obuf (
+    .O(doutb[10]),
+    .I(doutb_d[10]) 
+);
+  OBUF doutb_11_obuf (
+    .O(doutb[11]),
+    .I(doutb_d[11]) 
+);
+  OBUF doutb_12_obuf (
+    .O(doutb[12]),
+    .I(doutb_d[12]) 
+);
+  OBUF doutb_13_obuf (
+    .O(doutb[13]),
+    .I(doutb_d[13]) 
+);
+  OBUF doutb_14_obuf (
+    .O(doutb[14]),
+    .I(doutb_d[14]) 
+);
+  OBUF doutb_15_obuf (
+    .O(doutb[15]),
+    .I(doutb_d[15]) 
+);
+  DPB dpb_inst_0 (
+    .DOA(douta_d[15:0]),
+    .DOB(doutb_d[15:0]),
+    .CLKA(clka_d),
+    .CEA(cea_d),
+    .CLKB(clkb_d),
+    .CEB(ceb_d),
+    .OCEA(ocea_d),
+    .OCEB(oceb_d),
+    .RESETA(reseta_d),
+    .RESETB(resetb_d),
+    .WREA(wrea_d),
+    .WREB(wreb_d),
+    .ADA({GND,GND,ada_d[7:0],GND,GND,VCC,VCC}),
+    .ADB({GND,GND,adb_d[7:0],GND,GND,VCC,VCC}),
+    .BLKSELA({GND,GND,GND}),
+    .BLKSELB({GND,GND,GND}),
+    .DIA(dina_d[15:0]),
+    .DIB(dinb_d[15:0]) 
+);
+defparam dpb_inst_0.BIT_WIDTH_0=16;
+defparam dpb_inst_0.BIT_WIDTH_1=16;
+defparam dpb_inst_0.BLK_SEL_0=3'b000;
+defparam dpb_inst_0.BLK_SEL_1=3'b000;
+defparam dpb_inst_0.INIT_RAM_00=256'h7FFF045B01DD07FEFFFF10840C9A0C9960350E882BCE7FFF00277D6D582C34EE;
+defparam dpb_inst_0.INIT_RAM_01=256'h0316FC1105760047FB37F68CFE6F0A3151A3357A49AC4A070406344C0E0102C5;
+defparam dpb_inst_0.INIT_RAM_02=256'h0BF7E522FFD709C3E82101C4051B05D90CE3F3770745F4E6CAA21E03F4E8D75D;
+defparam dpb_inst_0.INIT_RAM_03=256'hFD3F0C350687F5BE0D24F61CF0F3F75F132000EBFEE7FB7AFD60F374E377107B;
+defparam dpb_inst_0.INIT_RAM_04=256'h05E300F5F8D3DB2B05D714A7F496F819D93B2BFFF848DA29FB98FDDEFB2CF81D;
+defparam dpb_inst_0.INIT_RAM_05=256'hFD68FDEEEE3DEE0DF722F24308DFFA95F85DF8A2106706480F35DB5402FD0C30;
+defparam dpb_inst_0.INIT_RAM_06=256'h00A203B1FD0BFE01F82A2FDC23991EB9FEA3FFE1FDCBFE44002C024400A5FDF0;
+defparam dpb_inst_0.INIT_RAM_07=256'h4D1245D0FDD7039F295DF900F6C5E0ABE4F3FC25E247D51A005A000AFE5AFD07;
+defparam dpb_inst_0.INIT_RAM_08=256'h07F69C16FEE9F15D15791228066AF5151E07079917C50B8ACDC31095F030DADC;
+defparam dpb_inst_0.INIT_RAM_09=256'hFDB61875F13DE1282172E2C5148832E19E610DFF08F31C0AF197FBCDF041FFFC;
+defparam dpb_inst_0.INIT_RAM_0A=256'h000000000000000000000000000000000000000000000000DD9E1166EF6A28F1;
+defparam dpb_inst_0.READ_MODE0=1'b1;
+defparam dpb_inst_0.READ_MODE1=1'b0;
+defparam dpb_inst_0.RESET_MODE="SYNC";
+defparam dpb_inst_0.WRITE_MODE0=2'b00;
+defparam dpb_inst_0.WRITE_MODE1=2'b00;
+  VCC VCC_cZ (
+    .V(VCC)
+);
+  GND GND_cZ (
+    .G(GND)
+);
+  GSR GSR (
+    .GSRI(VCC) 
+);
+endmodule /* Gowin_DPB */

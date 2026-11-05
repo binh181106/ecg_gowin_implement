@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE gowin-synthesis-project>
+<Project>
+    <Version>beta</Version>
+    <Device id="GW5A-25A" package="UBGA324" speed="2" partNumber="GW5A-LV25UG324C2/I1"/>
+    <FileList>
+        <File path="D:\FPT\Semester4\FAP201\Bao_rom\src\adc_interface.v" type="verilog"/>
+        <File path="D:\FPT\Semester4\FAP201\Bao_rom\src\ai_classifier.v" type="verilog"/>
+        <File path="D:\FPT\Semester4\FAP201\Bao_rom\src\apb_slave_if.v" type="verilog"/>
+        <File path="D:\FPT\Semester4\FAP201\Bao_rom\src\control_fsm.v" type="verilog"/>
+        <File path="D:\FPT\Semester4\FAP201\Bao_rom\src\demo_apb_seq.v" type="verilog"/>
+        <File path="D:\FPT\Semester4\FAP201\Bao_rom\src\demo_uart_packetizer.v" type="verilog"/>
+        <File path="D:\FPT\Semester4\FAP201\Bao_rom\src\ecg_rom.v" type="verilog"/>
+        <File path="D:\FPT\Semester4\FAP201\Bao_rom\src\feature_extraction.v" type="verilog"/>
+        <File path="D:\FPT\Semester4\FAP201\Bao_rom\src\sample_pacer.v" type="verilog"/>
+        <File path="D:\FPT\Semester4\FAP201\Bao_rom\src\top_ecg_acg525_board.v" type="verilog"/>
+        <File path="D:\FPT\Semester4\FAP201\Bao_rom\src\top_ecg_rom_demo.v" type="verilog"/>
+        <File path="D:\FPT\Semester4\FAP201\Bao_rom\src\uart_tx.v" type="verilog"/>
+        <File path="D:\FPT\Semester4\FAP201\Bao_rom\src\window_buffer.v" type="verilog"/>
+        <File path="D:\FPT\Semester4\FAP201\Bao_rom\src\gowin_dpb\gowin_dpb.v" type="verilog"/>
+        <File path="D:\FPT\Semester4\FAP201\Bao_rom\src\gowin_sdpb\gowin_sdpb.v" type="verilog"/>
+    </FileList>
+    <OptionList>
+        <Option type="disable_insert_pad" value="0"/>
+        <Option type="looplimit" value="2000"/>
+        <Option type="output_file" value="D:\FPT\Semester4\FAP201\Bao_rom\impl\gwsynthesis\Bao_rom.vg"/>
+        <Option type="print_all_synthesis_warning" value="0"/>
+        <Option type="ram_rw_check" value="0"/>
+        <Option type="verilog_language" value="verilog-2001"/>
+        <Option type="vhdl_language" value="vhdl-1993"/>
+    </OptionList>
+</Project>

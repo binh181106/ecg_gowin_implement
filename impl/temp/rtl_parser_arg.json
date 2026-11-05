@@ -1,0 +1,73 @@
+{
+ "Device" : "GW5A-25A",
+ "Files" : [
+  {
+   "Path" : "D:/FPT/Semester4/FAP201/Bao_rom/src/adc_interface.v",
+   "Type" : "verilog"
+  },
+  {
+   "Path" : "D:/FPT/Semester4/FAP201/Bao_rom/src/ai_classifier.v",
+   "Type" : "verilog"
+  },
+  {
+   "Path" : "D:/FPT/Semester4/FAP201/Bao_rom/src/apb_slave_if.v",
+   "Type" : "verilog"
+  },
+  {
+   "Path" : "D:/FPT/Semester4/FAP201/Bao_rom/src/control_fsm.v",
+   "Type" : "verilog"
+  },
+  {
+   "Path" : "D:/FPT/Semester4/FAP201/Bao_rom/src/demo_apb_seq.v",
+   "Type" : "verilog"
+  },
+  {
+   "Path" : "D:/FPT/Semester4/FAP201/Bao_rom/src/demo_uart_packetizer.v",
+   "Type" : "verilog"
+  },
+  {
+   "Path" : "D:/FPT/Semester4/FAP201/Bao_rom/src/ecg_rom.v",
+   "Type" : "verilog"
+  },
+  {
+   "Path" : "D:/FPT/Semester4/FAP201/Bao_rom/src/feature_extraction.v",
+   "Type" : "verilog"
+  },
+  {
+   "Path" : "D:/FPT/Semester4/FAP201/Bao_rom/src/sample_pacer.v",
+   "Type" : "verilog"
+  },
+  {
+   "Path" : "D:/FPT/Semester4/FAP201/Bao_rom/src/top_ecg_acg525_board.v",
+   "Type" : "verilog"
+  },
+  {
+   "Path" : "D:/FPT/Semester4/FAP201/Bao_rom/src/top_ecg_rom_demo.v",
+   "Type" : "verilog"
+  },
+  {
+   "Path" : "D:/FPT/Semester4/FAP201/Bao_rom/src/uart_tx.v",
+   "Type" : "verilog"
+  },
+  {
+   "Path" : "D:/FPT/Semester4/FAP201/Bao_rom/src/window_buffer.v",
+   "Type" : "verilog"
+  },
+  {
+   "Path" : "D:/FPT/Semester4/FAP201/Bao_rom/src/gowin_dpb/gowin_dpb.v",
+   "Type" : "verilog"
+  },
+  {
+   "Path" : "D:/FPT/Semester4/FAP201/Bao_rom/src/gowin_sdpb/gowin_sdpb.v",
+   "Type" : "verilog"
+  }
+ ],
+ "IncludePath" : [
+
+ ],
+ "LoopLimit" : 2000,
+ "ResultFile" : "D:/FPT/Semester4/FAP201/Bao_rom/impl/temp/rtl_parser.result",
+ "Top" : "",
+ "VerilogStd" : "verilog_2001",
+ "VhdlStd" : "vhdl_93"
+}

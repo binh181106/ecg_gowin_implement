@@ -1,0 +1,128 @@
+[
+ {
+  "InstFile" : "D:/FPT/Semester4/FAP201/Bao_rom/src/top_ecg_acg525_board.v",
+  "InstLine" : 20,
+  "InstName" : "top_ecg_acg525_board",
+  "ModuleFile" : "D:/FPT/Semester4/FAP201/Bao_rom/src/top_ecg_acg525_board.v",
+  "ModuleLine" : 20,
+  "ModuleName" : "top_ecg_acg525_board",
+  "SubInsts" : [
+   {
+    "InstFile" : "D:/FPT/Semester4/FAP201/Bao_rom/src/top_ecg_acg525_board.v",
+    "InstLine" : 38,
+    "InstName" : "u_demo",
+    "ModuleFile" : "D:/FPT/Semester4/FAP201/Bao_rom/src/top_ecg_rom_demo.v",
+    "ModuleLine" : 2,
+    "ModuleName" : "top_ecg_rom_demo",
+    "SubInsts" : [
+     {
+      "InstFile" : "D:/FPT/Semester4/FAP201/Bao_rom/src/top_ecg_rom_demo.v",
+      "InstLine" : 30,
+      "InstName" : "u_rom",
+      "ModuleFile" : "D:/FPT/Semester4/FAP201/Bao_rom/src/ecg_rom.v",
+      "ModuleLine" : 17,
+      "ModuleName" : "ecg_rom"
+     },
+     {
+      "InstFile" : "D:/FPT/Semester4/FAP201/Bao_rom/src/top_ecg_rom_demo.v",
+      "InstLine" : 40,
+      "InstName" : "u_pacer",
+      "ModuleFile" : "D:/FPT/Semester4/FAP201/Bao_rom/src/sample_pacer.v",
+      "ModuleLine" : 36,
+      "ModuleName" : "sample_pacer"
+     },
+     {
+      "InstFile" : "D:/FPT/Semester4/FAP201/Bao_rom/src/top_ecg_rom_demo.v",
+      "InstLine" : 79,
+      "InstName" : "u_adc_if",
+      "ModuleFile" : "D:/FPT/Semester4/FAP201/Bao_rom/src/adc_interface.v",
+      "ModuleLine" : 11,
+      "ModuleName" : "adc_interface"
+     },
+     {
+      "InstFile" : "D:/FPT/Semester4/FAP201/Bao_rom/src/top_ecg_rom_demo.v",
+      "InstLine" : 95,
+      "InstName" : "u_window",
+      "ModuleFile" : "D:/FPT/Semester4/FAP201/Bao_rom/src/window_buffer.v",
+      "ModuleLine" : 26,
+      "ModuleName" : "window_buffer",
+      "SubInsts" : [
+       {
+        "InstFile" : "D:/FPT/Semester4/FAP201/Bao_rom/src/window_buffer.v",
+        "InstLine" : 133,
+        "InstName" : "u_hw_buffer",
+        "ModuleFile" : "D:/FPT/Semester4/FAP201/Bao_rom/src/gowin_sdpb/gowin_sdpb.v",
+        "ModuleLine" : 10,
+        "ModuleName" : "Gowin_SDPB"
+       }
+      ]
+     },
+     {
+      "InstFile" : "D:/FPT/Semester4/FAP201/Bao_rom/src/top_ecg_rom_demo.v",
+      "InstLine" : 121,
+      "InstName" : "u_feature",
+      "ModuleFile" : "D:/FPT/Semester4/FAP201/Bao_rom/src/feature_extraction.v",
+      "ModuleLine" : 18,
+      "ModuleName" : "feature_extraction"
+     },
+     {
+      "InstFile" : "D:/FPT/Semester4/FAP201/Bao_rom/src/top_ecg_rom_demo.v",
+      "InstLine" : 139,
+      "InstName" : "u_ctrl_fsm",
+      "ModuleFile" : "D:/FPT/Semester4/FAP201/Bao_rom/src/control_fsm.v",
+      "ModuleLine" : 20,
+      "ModuleName" : "control_fsm"
+     },
+     {
+      "InstFile" : "D:/FPT/Semester4/FAP201/Bao_rom/src/top_ecg_rom_demo.v",
+      "InstLine" : 164,
+      "InstName" : "u_ai",
+      "ModuleFile" : "D:/FPT/Semester4/FAP201/Bao_rom/src/ai_classifier.v",
+      "ModuleLine" : 2,
+      "ModuleName" : "ai_classifier"
+     },
+     {
+      "InstFile" : "D:/FPT/Semester4/FAP201/Bao_rom/src/top_ecg_rom_demo.v",
+      "InstLine" : 180,
+      "InstName" : "u_apb",
+      "ModuleFile" : "D:/FPT/Semester4/FAP201/Bao_rom/src/apb_slave_if.v",
+      "ModuleLine" : 6,
+      "ModuleName" : "apb_slave_if"
+     },
+     {
+      "InstFile" : "D:/FPT/Semester4/FAP201/Bao_rom/src/top_ecg_rom_demo.v",
+      "InstLine" : 205,
+      "InstName" : "u_seq",
+      "ModuleFile" : "D:/FPT/Semester4/FAP201/Bao_rom/src/demo_apb_seq.v",
+      "ModuleLine" : 32,
+      "ModuleName" : "demo_apb_seq"
+     },
+     {
+      "InstFile" : "D:/FPT/Semester4/FAP201/Bao_rom/src/top_ecg_rom_demo.v",
+      "InstLine" : 221,
+      "InstName" : "u_pz",
+      "ModuleFile" : "D:/FPT/Semester4/FAP201/Bao_rom/src/demo_uart_packetizer.v",
+      "ModuleLine" : 2,
+      "ModuleName" : "demo_uart_packetizer"
+     },
+     {
+      "InstFile" : "D:/FPT/Semester4/FAP201/Bao_rom/src/top_ecg_rom_demo.v",
+      "InstLine" : 242,
+      "InstName" : "u_uart_tx",
+      "ModuleFile" : "D:/FPT/Semester4/FAP201/Bao_rom/src/uart_tx.v",
+      "ModuleLine" : 11,
+      "ModuleName" : "uart_tx"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "InstFile" : "D:/FPT/Semester4/FAP201/Bao_rom/src/gowin_dpb/gowin_dpb.v",
+  "InstLine" : 10,
+  "InstName" : "Gowin_DPB",
+  "ModuleFile" : "D:/FPT/Semester4/FAP201/Bao_rom/src/gowin_dpb/gowin_dpb.v",
+  "ModuleLine" : 10,
+  "ModuleName" : "Gowin_DPB"
+ }
+]

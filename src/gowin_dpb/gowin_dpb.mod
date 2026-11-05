@@ -1,0 +1,26 @@
+-series GW5A
+-device GW5A-25
+-device_version A
+-package UBGA324
+-part_number GW5A-LV25UG324C2/I1
+
+
+-mod_name Gowin_DPB
+-file_name gowin_dpb
+-path D:/FPT/Semester4/FAP201/Bao_rom/src/gowin_dpb/
+-type RAM_DP
+-file_type vlg
+-bram_b true
+-dev_type GW5A-25A
+-depth_0 164
+-depth_1 164
+-width_0 16
+-width_1 16
+-read_mode_0 pipeline
+-read_mode_1 bypass
+-write_mode_0 normal
+-write_mode_1 normal
+-speed false
+-reset_mode sync
+-init_file D:\FPT\Semester4\FAP201\Bao_rom\src\weight.mi
+-init_match port_A
