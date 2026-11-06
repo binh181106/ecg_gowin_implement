@@ -1,2 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Module name="Gowin_DPB" Bsram="1"/>
+<Module name="top_ecg_acg525_board" Register="35" Alu="24" Lut="2">
+    <SubModule name="u_demo" Register="16" Alu="15" Lut="1">
+        <SubModule name="u_pacer" Register="43" Alu="10" Lut="56"/>
+        <SubModule name="u_adc_if" Register="6" Lut="6"/>
+        <SubModule name="u_window" Register="44" Alu="9" Lut="99">
+            <SubModule name="u_hw_buffer" Bsram="1"/>
+        </SubModule>
+        <SubModule name="u_feature" Register="469" Alu="180" Lut="503" MULT12X12="1" MULT27X36="2"/>
+        <SubModule name="u_ctrl_fsm" Register="48" Lut="105"/>
+        <SubModule name="u_ai" Register="145" Alu="192" Lut="228"/>
+        <SubModule name="u_apb" Register="10" Lut="13"/>
+        <SubModule name="u_seq" Register="17" Lut="28"/>
+        <SubModule name="u_pz" Register="195" Alu="202" Lut="184"/>
+        <SubModule name="u_uart_tx" Register="36" Lut="68"/>
+    </SubModule>
+</Module>

@@ -1,6 +1,8 @@
-Reading netlist file: "D:\FPT\Semester4\FAP201\Bao_rom\impl\gwsynthesis\Bao_rom.vg"
-Parsing netlist file "D:\FPT\Semester4\FAP201\Bao_rom\impl\gwsynthesis\Bao_rom.vg" completed
+Reading netlist file: "H:\IC Design\Code\Gowin_Work\ecg_gowin_implement\impl\gwsynthesis\Bao_rom.vg"
+Parsing netlist file "H:\IC Design\Code\Gowin_Work\ecg_gowin_implement\impl\gwsynthesis\Bao_rom.vg" completed
 Processing netlist completed
+Reading constraint file: "H:\IC Design\Code\Gowin_Work\ecg_gowin_implement\src\ecg_board.cst"
+Physical Constraint parsed completed
 Running placement......
 [10%] Placement Phase 0 completed
 [20%] Placement Phase 1 completed
@@ -16,9 +18,9 @@ Running timing analysis......
 Placement and routing completed
 Bitstream generation in progress......
 Bitstream generation completed
-Generate file "D:\FPT\Semester4\FAP201\Bao_rom\impl\pnr\Bao_rom.pin.html" completed
-Generate file "D:\FPT\Semester4\FAP201\Bao_rom\impl\pnr\Bao_rom.rpt.html" completed
-Generate file "D:\FPT\Semester4\FAP201\Bao_rom\impl\pnr\Bao_rom.rpt.txt" completed
-Generate file "D:\FPT\Semester4\FAP201\Bao_rom\impl\pnr\Bao_rom.tr.html" completed
-Thu Nov  5 22:42:06 2026
+Generate file "H:\IC Design\Code\Gowin_Work\ecg_gowin_implement\impl\pnr\Bao_rom.pin.html" completed
+Generate file "H:\IC Design\Code\Gowin_Work\ecg_gowin_implement\impl\pnr\Bao_rom.rpt.html" completed
+Generate file "H:\IC Design\Code\Gowin_Work\ecg_gowin_implement\impl\pnr\Bao_rom.rpt.txt" completed
+Generate file "H:\IC Design\Code\Gowin_Work\ecg_gowin_implement\impl\pnr\Bao_rom.tr.html" completed
+Fri Nov  6 14:00:00 2026
 

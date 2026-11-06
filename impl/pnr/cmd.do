@@ -1,7 +1,9 @@
--d D:\FPT\Semester4\FAP201\Bao_rom\impl\gwsynthesis\Bao_rom.vg
+-d H:\IC Design\Code\Gowin_Work\ecg_gowin_implement\impl\gwsynthesis\Bao_rom.vg
 -p GW5A-25A-UBGA324-2
 -pn GW5A-LV25UG324C2/I1
--cfg D:\FPT\Semester4\FAP201\Bao_rom\impl\pnr\device.cfg
+-cst H:\IC Design\Code\Gowin_Work\ecg_gowin_implement\src\ecg_board.cst
+-cfg H:\IC Design\Code\Gowin_Work\ecg_gowin_implement\impl\pnr\device.cfg
+-sdc H:\IC Design\Code\Gowin_Work\ecg_gowin_implement\src\ecg_board.sdc
 -bit
 -tr
 -ph

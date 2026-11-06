@@ -20,6 +20,9 @@
         <File path="src/top_ecg_rom_demo.v" type="file.verilog" enable="1"/>
         <File path="src/uart_tx.v" type="file.verilog" enable="1"/>
         <File path="src/window_buffer.v" type="file.verilog" enable="1"/>
+        <File path="src/ecg_board.cst" type="file.cst" enable="1"/>
+        <File path="src/ecg_board.sdc" type="file.sdc" enable="1"/>
+        <File path="Bao_rom.gprj" type="file.other" enable="1"/>
         <File path="src/ecg_rom.hex" type="file.other" enable="1"/>
         <File path="src/golden_model.py" type="file.other" enable="1"/>
         <File path="src/uart_decode.py" type="file.other" enable="1"/>
