@@ -28,7 +28,7 @@
       "InstLine" : 30,
       "InstName" : "u_rom",
       "ModuleFile" : "H:/IC Design/Code/Gowin_Work/ecg_gowin_implement/src/ecg_rom.v",
-      "ModuleLine" : 17,
+      "ModuleLine" : 3,
       "ModuleName" : "ecg_rom"
      },
      {
@@ -70,7 +70,7 @@
       "InstLine" : 121,
       "InstName" : "u_feature",
       "ModuleFile" : "H:/IC Design/Code/Gowin_Work/ecg_gowin_implement/src/feature_extraction.v",
-      "ModuleLine" : 18,
+      "ModuleLine" : 3,
       "ModuleName" : "feature_extraction"
      },
      {
