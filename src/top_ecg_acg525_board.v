@@ -49,7 +49,7 @@ module top_ecg_acg525_board #(
             sticky_stage <= sticky_stage | demo_status[2:1];
     end
 
-    assign debug_led = {heartbeat_count[24], sticky_stage, demo_rst_n};
+    assign debug_led = {demo_rst_n, sticky_stage, heartbeat_count[24]};
     assign status_led = LED_ACTIVE_LOW ? ~debug_led : debug_led;
 
 endmodule
