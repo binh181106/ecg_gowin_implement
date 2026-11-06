@@ -9,15 +9,15 @@
  },
  {
   "InstFile" : "H:/IC Design/Code/Gowin_Work/ecg_gowin_implement/src/top_ecg_acg525_board.v",
-  "InstLine" : 20,
+  "InstLine" : 3,
   "InstName" : "top_ecg_acg525_board",
   "ModuleFile" : "H:/IC Design/Code/Gowin_Work/ecg_gowin_implement/src/top_ecg_acg525_board.v",
-  "ModuleLine" : 20,
+  "ModuleLine" : 3,
   "ModuleName" : "top_ecg_acg525_board",
   "SubInsts" : [
    {
     "InstFile" : "H:/IC Design/Code/Gowin_Work/ecg_gowin_implement/src/top_ecg_acg525_board.v",
-    "InstLine" : 38,
+    "InstLine" : 34,
     "InstName" : "u_demo",
     "ModuleFile" : "H:/IC Design/Code/Gowin_Work/ecg_gowin_implement/src/top_ecg_rom_demo.v",
     "ModuleLine" : 2,

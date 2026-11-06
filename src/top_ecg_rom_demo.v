@@ -261,7 +261,7 @@ wire [191:0] features_flat = {
     assign demo_overflow = adc_overflow | feature_overflow | mlp_overflow | pkt_drop_r;
     assign demo_class    = sys_class_code;
     assign status_led[0] = sys_done;
-    assign status_led[1] = window_ready;
-    assign status_led[2] = feat_valid;
+    assign status_led[1] = adc_sample_valid;
+    assign status_led[2] = window_enable;
     assign status_led[3] = demo_done_r;
 endmodule
