@@ -1,0 +1,66 @@
+m255
+K4
+z2
+!s112 1.1
+!i10d 8192
+!i10e 25
+!i10f 100
+cModel Technology
+dC:/WINDOWS/system32
+T_opt
+!s110 1793968831
+Vb7zcZFVWiQJ>VORHk>UeV2
+04 21 4 work tb_feature_checkpoint fast 0
+=1-c8530905c11f-6aedcabf-6e-52e4
+o-quiet -auto_acc_if_foreign -work work_feature
+Z0 tCvgOpt 0
+n@_opt
+OL;O;10.7c;67
+vfeature_extraction
+Z1 DXx6 sv_std 3 std 0 22 d=_JfHTnXCN[H5FjiaJJc0
+Z2 !s110 1793968830
+!i10b 1
+!s100 Ole<bc1OC^[^iX]PB9ihg0
+I3ILEA85Wg>dMjL`1YH?9n0
+Z3 VDg1SIo80bB@j0V0VzS_@n1
+!s105 feature_extraction_v_unit
+S1
+Z4 dH:/IC Design/Code/Gowin_Work/ecg_gowin_implement
+w1793967769
+8H:\IC Design\Code\Gowin_Work\ecg_gowin_implement\src\feature_extraction.v
+FH:\IC Design\Code\Gowin_Work\ecg_gowin_implement\src\feature_extraction.v
+L0 3
+Z5 OL;L;10.7c;67
+r1
+!s85 0
+31
+Z6 !s108 1793968830.000000
+Z7 !s107 H:\IC Design\Code\Gowin_Work\ecg_gowin_implement\sim\tb_feature_checkpoint.sv|H:\IC Design\Code\Gowin_Work\ecg_gowin_implement\src\feature_extraction.v|
+Z8 !s90 -sv|-work|H:\IC Design\Code\Gowin_Work\ecg_gowin_implement\sim\work_feature|H:\IC Design\Code\Gowin_Work\ecg_gowin_implement\src\feature_extraction.v|H:\IC Design\Code\Gowin_Work\ecg_gowin_implement\sim\tb_feature_checkpoint.sv|
+!i113 0
+Z9 o-sv -work {H:\IC Design\Code\Gowin_Work\ecg_gowin_implement\sim\work_feature} -L mtiAvm -L mtiRnm -L mtiOvm -L mtiUvm -L mtiUPF -L infact
+R0
+vtb_feature_checkpoint
+R1
+R2
+!i10b 1
+!s100 5>NIL45J1dA<]dSVl?mz;1
+If>^]G0PZJEZ6?dRZo9a9M3
+R3
+!s105 tb_feature_checkpoint_sv_unit
+S1
+R4
+w1793968818
+8H:\IC Design\Code\Gowin_Work\ecg_gowin_implement\sim\tb_feature_checkpoint.sv
+FH:\IC Design\Code\Gowin_Work\ecg_gowin_implement\sim\tb_feature_checkpoint.sv
+L0 3
+R5
+r1
+!s85 0
+31
+R6
+R7
+R8
+!i113 0
+R9
+R0

@@ -1,0 +1,11 @@
+# vsim -c work_feature.tb_feature_checkpoint -do "run -all; quit -f" 
+# Start time: 19:26:56 on Nov 06,2026
+# ** Note: (vsim-3812) Design is being optimized...
+# ** Error: (vopt-13130) Failed to find design unit tb_feature_checkpoint.
+#         Searched libraries:
+#             work
+#             work_feature
+# Optimization failed
+# Error loading design
+# End time: 19:27:00 on Nov 06,2026, Elapsed time: 0:00:04
+# Errors: 1, Warnings: 0

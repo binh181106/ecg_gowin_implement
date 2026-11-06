@@ -251,22 +251,19 @@ module feature_extraction #(
                 end
 
                 // Bo chia giu nguyen ban goc; se sua o buoc tiep theo.
-                S_DIV_CREST: begin
+                               S_DIV_CREST: begin
                     if (div_cnt == 6'd0) begin
-                        div_divisor <=
-                            (rms_now[15:0] == 16'd0)
-                            ? 16'd1 : rms_now[15:0];
-
-                        div_dividend <= {12'd0, mag_peak, 12'd0};
-                        div_quot     <= 28'd0;
-                        div_rem      <= 17'd0;
-
-                        div_cnt <=
-                            (rms_now[15:0] == 16'd0)
-                            ? 6'd28 : 6'd1;
-
-                        if (rms_now[15:0] == 16'd0)
+                        if (rms_now[15:0] == 16'd0) begin
                             f_crest <= 16'd0;
+                            div_cnt <= 6'd0;
+                            state   <= S_DIV_RR;
+                        end else begin
+                            div_divisor  <= rms_now[15:0];
+                            div_dividend <= {8'd0, mag_peak, 12'd0};
+                            div_quot     <= 28'd0;
+                            div_rem      <= 17'd0;
+                            div_cnt      <= 6'd1;
+                        end
                     end else if (div_cnt <= 6'd28) begin
                         div_dividend <= div_dividend << 1;
 
@@ -278,11 +275,10 @@ module feature_extraction #(
 
                             div_quot <=
                                 div_quot |
-                                (28'h1 << (6'd27 - div_cnt));
+                                (28'h1 << (6'd28 - div_cnt));
                         end else begin
                             div_rem <=
                                 {div_rem[15:0], div_dividend[27]};
-                            div_quot <= div_quot;
                         end
 
                         div_cnt <= div_cnt + 6'd1;
@@ -299,20 +295,17 @@ module feature_extraction #(
 
                 S_DIV_RR: begin
                     if (div_cnt == 6'd0) begin
-                        div_divisor <=
-                            (rr_previous == 16'd0)
-                            ? 16'd1 : rr_previous;
-
-                        div_dividend <= {rr_current, 12'd0};
-                        div_quot     <= 28'd0;
-                        div_rem      <= 17'd0;
-
-                        div_cnt <=
-                            (rr_previous == 16'd0)
-                            ? 6'd28 : 6'd1;
-
-                        if (rr_previous == 16'd0)
+                        if (rr_previous == 16'd0) begin
                             f_rr_ratio <= 16'd4096;
+                            div_cnt    <= 6'd0;
+                            state      <= S_DONE;
+                        end else begin
+                            div_divisor  <= rr_previous;
+                            div_dividend <= {rr_current, 12'd0};
+                            div_quot     <= 28'd0;
+                            div_rem      <= 17'd0;
+                            div_cnt      <= 6'd1;
+                        end
                     end else if (div_cnt <= 6'd28) begin
                         div_dividend <= div_dividend << 1;
 
@@ -324,11 +317,10 @@ module feature_extraction #(
 
                             div_quot <=
                                 div_quot |
-                                (28'h1 << (6'd27 - div_cnt));
+                                (28'h1 << (6'd28 - div_cnt));
                         end else begin
                             div_rem <=
                                 {div_rem[15:0], div_dividend[27]};
-                            div_quot <= div_quot;
                         end
 
                         div_cnt <= div_cnt + 6'd1;

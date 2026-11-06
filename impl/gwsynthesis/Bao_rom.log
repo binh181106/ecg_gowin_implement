@@ -23,7 +23,7 @@ Compiling module 'sample_pacer'("H:\IC Design\Code\Gowin_Work\ecg_gowin_implemen
 Compiling module 'adc_interface(DIV_WIDTH=2)'("H:\IC Design\Code\Gowin_Work\ecg_gowin_implement\src\adc_interface.v":11)
 Compiling module 'window_buffer'("H:\IC Design\Code\Gowin_Work\ecg_gowin_implement\src\window_buffer.v":26)
 Compiling module 'Gowin_SDPB'("H:\IC Design\Code\Gowin_Work\ecg_gowin_implement\src\gowin_sdpb\gowin_sdpb.v":10)
-Compiling module 'feature_extraction'("H:\IC Design\Code\Gowin_Work\ecg_gowin_implement\src\feature_extraction.v":18)
+Compiling module 'feature_extraction'("H:\IC Design\Code\Gowin_Work\ecg_gowin_implement\src\feature_extraction.v":3)
 Compiling module 'control_fsm'("H:\IC Design\Code\Gowin_Work\ecg_gowin_implement\src\control_fsm.v":20)
 Compiling module 'ai_classifier'("H:\IC Design\Code\Gowin_Work\ecg_gowin_implement\src\ai_classifier.v":2)
 Extracting RAM for identifier 'fc1_weights'("H:\IC Design\Code\Gowin_Work\ecg_gowin_implement\src\ai_classifier.v":56)

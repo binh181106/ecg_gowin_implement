@@ -2,17 +2,17 @@
 <Module name="top_ecg_acg525_board" Register="35" Alu="24" Lut="2">
     <SubModule name="u_demo" Register="16" Alu="15" Lut="1">
         <SubModule name="u_rom" Bsram="1"/>
-        <SubModule name="u_pacer" Register="51" Alu="10" Lut="59"/>
+        <SubModule name="u_pacer" Register="51" Alu="10" Lut="55"/>
         <SubModule name="u_adc_if" Register="22" Lut="7"/>
-        <SubModule name="u_window" Register="48" Alu="9" Lut="118">
+        <SubModule name="u_window" Register="44" Alu="9" Lut="110">
             <SubModule name="u_hw_buffer" Bsram="1"/>
         </SubModule>
-        <SubModule name="u_feature" Register="469" Alu="180" Lut="511" MULT12X12="1" MULT27X36="2"/>
-        <SubModule name="u_ctrl_fsm" Register="48" Lut="106"/>
-        <SubModule name="u_ai" Register="145" Alu="192" Lut="230"/>
+        <SubModule name="u_feature" Register="469" Alu="180" Lut="510" MULT12X12="1" MULT27X36="2"/>
+        <SubModule name="u_ctrl_fsm" Register="48" Lut="107"/>
+        <SubModule name="u_ai" Register="145" Alu="192" Lut="229"/>
         <SubModule name="u_apb" Register="10" Lut="13"/>
         <SubModule name="u_seq" Register="17" Lut="28"/>
-        <SubModule name="u_pz" Register="195" Alu="202" Lut="183"/>
-        <SubModule name="u_uart_tx" Register="36" Lut="70"/>
+        <SubModule name="u_pz" Register="195" Alu="202" Lut="182"/>
+        <SubModule name="u_uart_tx" Register="36" Lut="67"/>
     </SubModule>
 </Module>
