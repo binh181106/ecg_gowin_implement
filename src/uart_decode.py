@@ -5,7 +5,7 @@ The parser is testable WITHOUT a board: it operates on a raw byte stream
 (a .bin capture, the demo testbench's dumped bytes, or a live serial port if
 pyserial is available — optional, not required).
 
-Protocol (see demo/demo_uart_packetizer.v):
+Protocol (see src/demo_uart_packetizer.v):
     33 bytes, 16-bit fields little-endian, features two's complement:
       [0]=0xE7 [1]=0xA5 [2]=type 0x01 [3]=len 28
       [4..5]=win_index [6..29]=f0..f11 (12 x 16-bit)
@@ -13,15 +13,14 @@ Protocol (see demo/demo_uart_packetizer.v):
       [32]=checksum = sum(bytes[2..31]) mod 256
 
 The checksum scope is bytes 2..31 INCLUSIVE, i.e. every byte actually
-received in that range — including bytes the golden marks as "masked"
-(open / tool-dependent, e.g. f_crest). The checksum is therefore verified
-against the REAL received bytes, never against golden values.
+received in that range. The checksum is therefore verified against the
+REAL received bytes, never against golden values.
 
 Usage:
-    python -I demo/uart_decode.py                  -> self-test
-    python -I demo/uart_decode.py capture.bin      -> decode & print packets
-    python -I demo/uart_decode.py --check capture.bin
-        -> full acceptance check against demo/golden/expected_packets.json.
+    python -I src/uart_decode.py                  -> self-test
+    python -I src/uart_decode.py capture.bin      -> decode & print packets
+    python -I src/uart_decode.py --check capture.bin
+        -> full acceptance check against src/golden/expected_packets.json.
            Exit code 0 = capture meets the acceptance criteria, 1 = it does
            not, 2 = usage / IO error.
 
@@ -31,12 +30,17 @@ Acceptance criteria for --check (a clean demo capture):
       (sync 0xE7 0xA5, type 0x01, len 28)
     * window indices 1..7, in order
     * every packet's checksum verifies against its own received bytes
-    * every STRICT byte equals the golden byte (byte position, expected and
-      actual are reported on mismatch)
-    * MASKED bytes (golden strict_mask == 0: f_crest and the checksum) are
-      REPORTED when they differ, but do NOT fail the check: those bytes are
-      open / tool-dependent by owner decision (see docs/AUTOMATION_STATUS.md
-      §3.3, §9.4). The golden and the mask are never loosened here.
+    * EVERY byte equals the golden byte (byte position, expected and actual
+      are reported on mismatch). The golden mirrors the RTL arithmetic
+      exactly — including the 28-bit restoring divider used for f_crest and
+      f_rr_ratio — so all 33 bytes are asserted (strict_mask is all 1s).
+      There are no open / masked / tool-dependent bytes.
+
+Provenance note: the golden records the source revision and the SHA256 of
+src/ecg_rom.hex it was generated from. A capture is only comparable
+byte-exact if it was produced from that same revision and ROM image. When
+checking an older capture, treat any mismatch as "possibly a stale
+artifact" until the bitstream origin is confirmed.
 """
 import json
 import sys
@@ -165,7 +169,11 @@ def check_capture(data: bytes, golden: dict):
     else:
         info(f"window indices {got_idx} in order  OK")
 
-    # ---- 5. strict byte comparison + masked differences --------------------
+    # ---- 5. byte-exact comparison + (still-supported) masked differences --
+    # The golden is now all-strict, so any difference is a FAIL. The mask
+    # loop below remains correct: a mask[k]==0 byte would be REPORTED but
+    # not fatal, in case a future golden re-introduces an open byte. For
+    # the current all-1 mask every differing byte is a strict mismatch.
     for idx, (off, body) in enumerate(frames):
         if idx >= len(wins):
             fail(f"pkt#{idx}: more packets than golden windows")
@@ -179,8 +187,11 @@ def check_capture(data: bytes, golden: dict):
                 else:
                     open_bad.append(k)
         if strict_bad:
+            names = {16: "f_crest[7:0]", 17: "f_crest[15:8]", 32: "checksum"}
             for k in strict_bad:
-                fail(f"pkt#{idx} @{off} byte[{k}] strict mismatch: "
+                fail(f"pkt#{idx} @{off} byte[{k}]"
+                     f"{' (' + names[k] + ')' if k in names else ''} "
+                     f"strict mismatch: "
                      f"expected 0x{exp_packets[idx][k]:02X}, "
                      f"actual 0x{body[k]:02X}")
         if open_bad:
@@ -243,14 +254,18 @@ def self_test():
     assert not ok5, "wrong strict byte must fail even with a valid checksum"
     assert any("strict mismatch" in l for l in lines5), lines5
 
-    # --- case 6: a MASKED byte changed with a valid checksum -> reported ---
+    # --- case 6: a changed CREST byte with a valid checksum must FAIL ------
+    # (strict_mask is all 1s, so f_crest is a strict byte; the checker must
+    #  FAIL and report byte 16 = f_crest[7:0], not merely report it.)
     tampered2 = bytearray(exp_packets[0])
-    tampered2[16] ^= 0x20              # f_crest low byte — a masked byte
+    tampered2[16] ^= 0x20              # f_crest low byte — a STRICT byte now
     p6 = _rebuild(bytes(tampered2)) + b"".join(exp_packets[1:])
     ok6, lines6 = check_capture(p6, golden)
-    assert ok6, "masked-byte change must not fail the check:\n" + \
+    assert not ok6, "changed crest byte must fail the check:\n" + \
         "\n".join(lines6)
-    assert any("MASKED difference" in l for l in lines6), lines6
+    # The report must name byte 16 and identify it as the f_crest low byte.
+    assert any("byte[16]" in l for l in lines6), lines6
+    assert any("f_crest" in l for l in lines6), lines6
 
     # --- the parser still rejects a corrupt checksum -----------------------
     assert len(list(decode_stream(bytes(bad)))) == N_PACKETS - 1
@@ -260,7 +275,7 @@ def self_test():
     print(f"PASS uart_decode self-test: {N_PACKETS} golden packets decoded, "
           f"corrupt-checksum rejected, resync ok")
     print("PASS uart_decode check cases: clean=PASS missing=FAIL "
-          "reorder=FAIL badsum=FAIL strict-byte=FAIL masked-byte=reported")
+          "reorder=FAIL badsum=FAIL strict-byte=FAIL crest-byte=FAIL")
 
 
 if __name__ == "__main__":

@@ -2,47 +2,64 @@
 """Independent golden model for the ECG ROM demo.
 
 Recomputes, in Python, the exact 12 features the RTL pipeline MUST produce
-for every 512-sample window, from the RAW MIT-BIH file. This is the
-independent expected-value source for the demo testbench and for the UART
+for every 512-sample window, from the on-disk ROM sample stream
+(``src/ecg_rom.hex`` — the exact byte stream the DUT paces through). This is
+the independent expected-value source for the demo testbench and for the UART
 decode/compare scripts (NOT copied from the DUT).
 
-Pipeline mirrored bit-for-bit (see docs/AUTOMATION_STATUS.md §3 for the
-frozen as-RTL behaviours):
-  1. ecg_convert mapping: raw WFDB-212 signed 12-bit -> 8-bit 0..255
-     (linear, per-segment)
-  2. window_buffer: baseline_corrected = (v >= 169) ? v-169 : 0
+Pipeline mirrored bit-for-bit against src/*.v (formulas recorded per revision):
+  1. window_buffer baseline stage: baseline_corrected = (v >= 169) ? v-169 : 0
      window i (1-based) = samples [ (i-1)*256 .. (i-1)*256+511 ]
-     window_ready at totals T = 512, 768, ... (stride 256)
-  3. feature_extraction:
+     window_ready at totals T = 512, 768, ... (stride 256) -> 7 windows.
+  2. feature_extraction:
        sxe   = sign-extended 8-bit sample (x >= 128 -> x-256)
-       f_rms = s16( s32(sum_sq) >> 9 )            (arith)
-       f_var = s16( (sum_sq<<3) - s64(mean2 asr 12) )  with mean = sum*8
+       f_rms = s16( s32( (sum_sq & 0xFFFFFFFF) >> 9 ) )   (logical shift of
+                                                           the 32-bit slice)
+       f_var = s16( (8*sum_sq) - floor(sum*sum / 64) )
+               (mean_val = sum*8; var_now = (sum_sq<<<3) - ((mean_val**2)>>>12)
+                = 8*sum_sq - sum^2/64; the 64-bit reduced-product path is
+                asserted identical for this dataset)
        f_peak/f_max/f_ptp, f_zc (bit7 changes), f_half = pos_cnt<<3
-       f_crest (as-RTL, 16-bit shifted numerator, frozen in tb Test 8)
-         and f_crest_spec (untruncated expression) reported separately
-       f_rr*  : descending-threshold events (sample_delayed > 80 && sample <= 80)
-  4. ai_classifier: placeholder ZERO weights -> all outputs 0, argmax tie ->
-     class 0 (pipeline/math check only, NOT classification quality).
+       f_crest  and f_rr_ratio: the RTL 28-bit unsigned restoring
+               (shift-subtract) divider, i.e. floor(N*4096 / D) narrowed to
+               16 bits, reproduced here with independent Python integer
+               division (NO 16-bit truncation of the numerator):
+                 f_crest    = s16( sign(peak) * (abs(peak)*4096) // rms )
+                              (rms == 0 -> 0)
+                 f_rr_ratio = s16( (rr_cur*4096) // rr_prev )
+                              (rr_prev == 0 -> 4096, the RTL div-by-0 guard)
+     Validated against sim/tb_feature_checkpoint.sv vectors:
+     crest 409 / 204 / 21557, rr_ratio 6251 (all PASS in
+     sim/feature_checkpoint.log).
+  3. ai_classifier: placeholder ZERO weights -> all outputs 0, argmax tie ->
+     class 0, no overflow (pipeline/math check only, NOT classification
+     quality). Every packet: class byte = 0, flags byte = 0.
 
 Outputs (regenerated deterministically):
-  demo/golden/expected_packets.sv   -- TB include (arrays + packets)
-  demo/golden/expected_packets.json -- machine golden for Python decoders
+  src/golden/expected_packets.sv   -- TB include (arrays + packets)
+  src/golden/expected_packets.json -- machine golden for Python decoders
+                                      (src/uart_decode.py reads this path)
 
-Usage:  python -I demo/golden_model.py
+All 33 bytes of every packet are asserted STRICTLY (strict_mask = all 1);
+there is no masked / tool-dependent byte. The golden mirrors the as-RTL
+restoring divider, so crest and the checksum are byte-deterministic.
+
+Usage:  python -I src/golden_model.py
 """
+import hashlib
 import json
-import struct
+import subprocess
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
-DAT = HERE / "data" / "mitbih_100.dat"
-OUT = HERE / "golden"
+ROM_HEX = REPO / "src" / "ecg_rom.hex"
+OUT = REPO / "src" / "golden"
 
-# --- conversion parameters (MUST mirror demo/ecg_convert.py) --------------
-START, N, CHANNEL = 1000, 2048, 0
-BASELINE = 169
-THRESH_LOW = 80            # ecg_threshold[7:0] default (APB reset = 80)
+# --- conversion parameters (mirror the on-disk ROM stream) -----------------
+N = 2048                       # ROM_WORDS
+BASELINE = 169                 # window_buffer BASELINE_OFFSET
+THRESH_LOW = 80                # ecg_threshold[7:0] APB reset (apb_slave_if.v)
 WINDOW, STRIDE = 512, 256
 NUM_W = (N - WINDOW) // STRIDE + 1            # = 7 (T = 512..2048 step 256)
 
@@ -62,31 +79,59 @@ def s64(v):
     return v - 2 ** 64 if v & (1 << 63) else v
 
 
-def c_div(a, b):
-    """C-style truncating integer division (toward zero)."""
-    q = abs(a) // abs(b)
-    return -q if (a < 0) != (b < 0) and a != 0 else q
+def rtl_restoring_divider(numerator, denominator):
+    """Mirror of the RTL 28-bit unsigned shift-subtract (restoring) divider
+    in feature_extraction.v S_DIV_CREST / S_DIV_RR.
+
+    Returns the 16-bit narrow of the exact floor(numerator/denominator),
+    i.e. the value the RTL drives onto div_quot[15:0]. Denominator must be
+    non-zero; the caller guards zero denominators (crest rms==0 -> 0, rr
+    prev==0 -> 4096 constant), exactly as the RTL does.
+    """
+    # Exact floor of the true quotient, independent of the RTL's bit-serial
+    # loop: the RTL computes it via 28 shift-subtract iterations.
+    return numerator // denominator
+
+
+def provenance():
+    """Source revision + on-disk ROM image SHA256 (records in the JSON)."""
+    rev = None
+    try:
+        rev = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=REPO, capture_output=True, text=True, timeout=10,
+        ).stdout.strip()
+    except Exception:
+        pass
+    blob = ROM_HEX.read_bytes()
+    return {
+        "source_revision": rev,
+        "rom_hex": "src/ecg_rom.hex",
+        "rom_hex_bytes": len(blob),
+        "rom_hex_sha256": hashlib.sha256(blob).hexdigest(),
+    }
 
 
 def main():
-    # Load the ON-DISK hex — the exact sample stream the DUT paces through.
-    # This is the single source of truth; the golden does NOT recompute from
-    # the raw .dat (which could drift from the converter's output).
-    hexp = REPO / "demo" / "ecg_rom.hex"
+    # Load the ON-DISK hex — the exact sample stream the DUT paces through
+    # (src/ecg_rom.hex, one 2-digit hex byte per line). This is the single
+    # source of truth; the golden does NOT recompute from a raw .dat file
+    # (none exists in this repo) which could drift from the DUT's input.
+    if not ROM_HEX.is_file():
+        raise SystemExit(f"missing {ROM_HEX} — the DUT's ROM image")
     eight = []
-    for line in hexp.read_text().splitlines():
+    for line in ROM_HEX.read_text().splitlines():
         line = line.strip()
         if not line:
             continue
         eight.append(int(line, 16))
     # Sanity: the on-disk file must contain the full segment.
     if len(eight) != N:
-        raise SystemExit(f"on-disk hex has {len(eight)} samples, expected {N} "
-                         f"— regenerate with demo/ecg_convert.py first")
+        raise SystemExit(f"on-disk hex has {len(eight)} samples, expected {N}")
 
     lo, hi = min(eight), max(eight)   # for the JSON provenance record only
 
-    # window_buffer baseline stage (0..86 for this data)
+    # window_buffer baseline stage (window_buffer.v:59-65)
     post = [(v - BASELINE) if v >= BASELINE else 0 for v in eight]
 
     # pacer emits each sample once; windows fire at T = 512, 768, ..., 2048
@@ -96,31 +141,56 @@ def main():
 
         sxe = [v - 256 if v >= 128 else v for v in win]
         ssum = s32(sum(sxe))
-        ssumsq = s64(sum(v * v for v in sxe))
+        ssumsq = sum(v * v for v in sxe)
 
-        # f_rms: RTL does $signed(sum_square[31:0] >> 9) -- the >> is a LOGICAL
-        # shift of the 32-bit slice, THEN sign-extended.
+        # f_rms: RTL does $signed(sum_square[31:0] >> 9) — the >> is a LOGICAL
+        # shift of the 32-bit slice (the part-select strips signedness), THEN
+        # the result is sign-extended and narrowed to 16 bits.
         rms16 = s16(s32((ssumsq & 0xFFFFFFFF) >> 9))
 
-        # f_var: mean64 = sum*8 (64-bit, full precision); RTL var_now =
-        # (sum_square <<< 3) - ((mean_val*mean_val) >>> 12):
-        #  - sum_square is a 64-bit reg, (<<<3) in a 64-bit context -> mod 2^64
-        #  - mean*mean is a FULL 128-bit product, >>>12 is an arithmetic shift
-        #    of that 128-bit value (floor, sign-preserving)
-        #  - result truncated to 64 bits, f_var = low 16 bits
-        mean64 = s64(ssum * 8)
-        prod128 = mean64 * mean64            # full-precision signed product
-        p_shift = prod128 >> 12              # 128-bit arithmetic (floor) shift
-        var64 = s64((ssumsq << 3) - (p_shift & 0xFFFFFFFFFFFFFFFF))
-        f_var = s16(var64)
+        # f_var: mean_val = sum*8 (a 64-bit register, feature_extraction.v:225);
+        # var_now = (sum_square<<<3) - ((mean_val*mean_val) >>> 12).
+        #   mean_val*mean_val = (8*sum)^2 = 64*sum^2, so >>>12 == sum^2 >> 6
+        #   => var = 8*sum_sq - floor(sum^2/64).
+        # The RTL evaluates the product in the 64-bit `var_now` context (the
+        # lower 64 bits of the true product); compute that path AND the
+        # full-precision path and require them to agree for this dataset.
+        mean_val = ssum * 8
+        prod_true = mean_val * mean_val
+        prod_rtl = s64(prod_true)                    # 64-bit context truncation
+        if prod_rtl != prod_true:
+            raise SystemExit(
+                f"w{i}: mean_val*mean_val exceeds the RTL 64-bit context "
+                f"({prod_true} vs {prod_rtl}) — golden formula needs review")
+        m_shift = prod_rtl >> 12                    # arithmetic (floor) shift
+        var_rtl = s64((s64(ssumsq << 3)) - m_shift)
+        var_floor = (ssumsq * 8) - (ssum * ssum) // 64
+        if var_rtl != var_floor:
+            raise SystemExit(
+                f"w{i}: f_var formulas disagree: rtl={var_rtl} floor={var_floor}")
+        f_var = s16(var_rtl)
 
         peak = max(sxe)
         minv = min(sxe)
-        # crest: as-RTL (16-bit shifted numerator, frozen in tb Test 8)
-        num16 = s16(peak << 12)
-        crest_rtl = s16(c_div(num16, rms16)) if rms16 > 0 else 0
-        # crest: spec intent (full-precision numerator)
-        crest_spec = s16(c_div(peak * 4096, rms16)) if rms16 > 0 else 0
+
+        # f_crest: the RTL 28-bit restoring divider (feature_extraction.v:254-294).
+        #   numerator = {8'd0, mag_peak, 12'd0}  == mag_peak * 4096  (28 bits)
+        #   divisor   = rms_now[15:0]            (16-bit unsigned)
+        #   quotient  = floor(numerator/divisor), narrowed to div_quot[15:0]
+        #   sign      = sign of peak_reg (not of the magnitude)
+        #   rms == 0  -> f_crest = 0 (RTL branch, feature_extraction.v:256)
+        mag_peak = (-peak) & 0xFF if peak < 0 else peak
+        if rms16 > 0:
+            num = mag_peak * 4096
+            if num >= (1 << 28):
+                raise SystemExit(f"w{i}: crest numerator {num} exceeds 28 bits")
+            q = rtl_restoring_divider(num, rms16)
+            if q >= (1 << 16):
+                raise SystemExit(f"w{i}: crest quotient {q} exceeds 16 bits")
+            crest = -q if peak < 0 else q
+            f_crest = s16(crest)
+        else:
+            f_crest = 0
 
         zc, prev, pos = 0, 0, 0
         for v in win:
@@ -133,11 +203,11 @@ def main():
         # RR: EXACT mirror of the fixed feature_extraction S_ACCUMULATE.
         # Registers: rr_timer=0, rr_current=0, rr_previous=0, sample_delayed=0.
         # For each consumed sample win[k] (k=0..511): a falling crossing at
-        # sample k is (sample_delayed > T) && (win[k] <= T). On a crossing:
-        # rr_previous<-rr_current, rr_current<-rr_timer, rr_timer<-0; else
-        # rr_timer<-rr_timer+1. sample_delayed<-win[k]. (This is the
-        # interval since the previous crossing, not an index -- the rr_timer
-        # reset is now guarded so it is NOT dead code.)
+        # sample k is (sample_delayed > T) && (win[k] <= T), compared as
+        # UNSIGNED 8-bit values. On a crossing: rr_previous<-rr_current,
+        # rr_current<-rr_timer, rr_timer<-0; else rr_timer<-rr_timer+1.
+        # sample_delayed<-win[k]. rr_timer counts the samples elapsed since
+        # the previous crossing (the just-finished interval).
         rr_prev = 0; rr_cur = 0; rr_timer = 0; sdel = 0
         for k in range(len(win)):
             event = (sdel > THRESH_LOW and win[k] <= THRESH_LOW)
@@ -149,49 +219,54 @@ def main():
                 rr_timer += 1
             sdel = win[k]
 
+        # f_rr_ratio: the RTL 28-bit restoring divider (S_DIV_RR).
+        #   numerator = {rr_current, 12'd0} == rr_cur*4096 (28 bits)
+        #   divisor   = rr_previous (16-bit unsigned)
+        #   rr_previous == 0 -> f_rr_ratio = 4096 (RTL div-by-zero guard)
+        if rr_prev == 0:
+            f_rr_ratio = s16(4096)
+        else:
+            num = rr_cur * 4096
+            if num >= (1 << 28):
+                raise SystemExit(f"w{i}: rr_ratio numerator {num} exceeds 28 bits")
+            q = rtl_restoring_divider(num, rr_prev)
+            if q >= (1 << 16):
+                raise SystemExit(f"w{i}: rr_ratio quotient {q} exceeds 16 bits")
+            f_rr_ratio = s16(q)
+
         feats = [
             rms16,          # f_rms
             f_var,          # f_var
             s16(peak),      # f_peak
             s16(zc),        # f_zc
             s16(peak - minv),  # f_ptp
-            crest_rtl,      # f_crest (as-RTL)
+            f_crest,        # f_crest (RTL 28-bit restoring divider)
             s16(pos << 3),  # f_half_ratio
             s16(peak),      # f_max
             s16(rr_cur),    # f_rr
             s16(rr_prev),   # f_rr_prev
-            s16(c_div((rr_cur << 12) & 0xFFFF, rr_prev)) if rr_prev else s16(4096),  # f_rr_ratio (as-RTL)
+            f_rr_ratio,     # f_rr_ratio (RTL 28-bit restoring divider)
             s16(rr_cur - rr_prev),  # f_rr_diff
         ]
 
         # --- UART packet (demo protocol, 33 bytes) ---
-        # STRICT = all bytes EXCEPT f5 (crest, bytes 16-17) and the checksum
-        # (byte 32). Classification of each un-asserted byte:
-        #   - f5 f_crest: the golden's crest model does NOT reproduce the
-        #     Questa 10.7c width-context of `(peak_reg <<< 12)/rms` (§3.3).
-        #     This is a MODEL gap on a tool-dependent value, not an RTL bug.
-        #     Reported (crest_spec_intent + the DUT value in the TB log), not
-        #     byte-asserted.
-        #   - byte 32 checksum: = sum(bytes[2..31]) mod 256, so it depends on
-        #     the un-reproducible f5. The TB does a self-consistent check over
-        #     the CAPTURED bytes instead.
-        # f0-f4, f6-f7 and the f8-f11 RR family ARE byte-exact (RR was fixed
-        # this pass; golden mirrors the fixed RTL), so they stay asserted.
-        STRICT = [b for b in range(33) if b not in (16, 17, 32)]
+        # ALL 33 bytes are STRICT: the golden reproduces the RTL arithmetic
+        # exactly (crest / rr_ratio via the 28-bit restoring divider), so no
+        # byte is open or tool-dependent. The checksum is derived from the
+        # bytes above, so it is asserted too.
         widx = i
-        cls = 0
-        flags = 0
+        cls = 0             # zero-weight classifier -> argmax tie -> class 0
+        flags = 0           # no adc / feature / mlp overflow on a clean run
         body = [0xE7, 0xA5, 0x01, 28, widx & 0xFF, widx >> 8]
         for f in feats:
             body += [f & 0xFF, (f >> 8) & 0xFF]
         body += [cls & 0xFF, flags & 0xFF]
         pkt = body + [sum(body[2:32]) & 0xFF]
-        mask = [1 if b in STRICT else 0 for b in range(33)]
+        mask = [1] * 33
         windows.append({
             "win_index": widx,
             "raw_range": [lo, hi],
             "features_rtl": feats,
-            "crest_spec_intent": crest_spec,
             "class_code": cls,
             "flags": flags,
             "strict_mask": mask,
@@ -202,16 +277,37 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
 
     # ---- JSON golden (board compare + offline decode) ----
+    prov = provenance()
     jdoc = {
-        "source": ("MIT-BIH 100 ch0 (MLII) 360 sps, start=1000 n=2048 -> "
-                   "demo/ecg_rom.hex (on-disk, 8-bit)"),
+        "source": ("src/ecg_rom.hex (on-disk, 8-bit, 2048 samples) — the exact "
+                   "byte stream the DUT paces through"),
+        "provenance": {
+            **prov,
+            "note": ("A capture may only be compared byte-exact if it was "
+                     "produced from THIS source revision and ROM image. If a "
+                     "capture predates them, its bitstream is unconfirmed and "
+                     "a mismatch may be a stale-artifact issue, not an RTL bug."),
+        },
         "conversion": {
             "baseline": BASELINE,
             "threshold_low": THRESH_LOW,
             "eightbit_min": lo, "eightbit_max": hi,
-            "note": "golden loads the on-disk ecg_rom.hex (the DUT input); "
-                    "expected values computed independently from spec",
         },
+        "formulas": {
+            "baseline": "x = (raw >= 169) ? raw - 169 : 0",
+            "f_rms": "s16(s32((sum_sq & 0xFFFFFFFF) >> 9))",
+            "f_var": "s16(8*sum_sq - floor(sum^2/64))   [mean_val = sum*8]",
+            "f_crest": ("RTL 28-bit restoring divider: s16(sign(peak) * "
+                        "floor(abs(peak)*4096 / rms)); rms == 0 -> 0"),
+            "f_rr_ratio": ("RTL 28-bit restoring divider: s16(floor(rr_cur*4096 "
+                           "/ rr_prev)); rr_prev == 0 -> 4096"),
+            "f_half_ratio": "s16(pos_cnt << 3)  (pos_cnt = count of bit7==0)",
+            "f_zc": "count of bit7 toggles between consecutive samples",
+            "rr_event": "prev > 80 && cur <= 80 (unsigned 8-bit)",
+            "classifier": ("zero weights/biases -> argmax tie -> class 0, "
+                           "no overflow"),
+        },
+        "strict_all_bytes": True,
         "baud_div": 437,
         "windows": windows,
     }
@@ -219,15 +315,15 @@ def main():
 
     # ---- SystemVerilog include for the demo TB ----
     lines = [
-        "// AUTO-GENERATED by demo/golden_model.py -- do not edit by hand.",
-        "// Independent golden values (raw MIT-BIH source, NOT DUT output).",
+        "// AUTO-GENERATED by src/golden_model.py -- do not edit by hand.",
+        "// Independent golden values (from src/ecg_rom.hex, NOT DUT output).",
         f"localparam int EXP_NUMW = {NUM_W};",
         "reg [15:0] exp_widx [0:EXP_NUMW-1];",
         "reg signed [15:0] exp_feat [0:EXP_NUMW-1][0:11];",
         "reg [1:0]  exp_class [0:EXP_NUMW-1];",
         "reg [7:0]  exp_pkt  [0:EXP_NUMW-1][0:32];",
         "reg [7:0]  exp_chk  [0:EXP_NUMW-1];",
-        "// 1 = strict; 0 = owner-open/tool-dep (crest + RR family) -> not asserted",
+        "// 1 = strict; ALL bytes are strict (crest uses the RTL 28-bit divider)",
         "reg        exp_mask [0:EXP_NUMW-1][0:32];",
         "initial begin",
     ]
@@ -247,13 +343,16 @@ def main():
     (OUT / "expected_packets.sv").write_text("\n".join(lines))
 
     print(f"windows: {NUM_W}  (T = 512..2048 step 256)")
-    print(f"raw seg: min={lo} max={hi}  ->  8bit min={min(eight)} "
-          f"max={max(eight)}  post-baseline min={min(post)} max={max(post)}")
+    print(f"rom: {ROM_HEX}  sha256={prov['rom_hex_sha256']}")
+    print(f"rev: {prov['source_revision']}")
+    print(f"raw seg: min={lo} max={hi}  ->  post-baseline min={min(post)} "
+          f"max={max(post)}")
     for w in windows:
         f = w["features_rtl"]
         print(f"w{w['win_index']}: rms={f[0]} var={f[1]} peak={f[2]} "
-              f"zc={f[3]} ptp={f[4]} crest_rtl={f[5]} (spec {w['crest_spec_intent']}) "
-              f"half={f[6]} max={f[7]} rr={f[8]}/{f[9]} chk=0x{w['checksum']:02X}")
+              f"zc={f[3]} ptp={f[4]} crest={f[5]} "
+              f"half={f[6]} max={f[7]} rr={f[8]}/{f[9]} "
+              f"rr_ratio={f[10]} rr_diff={f[11]} chk=0x{w['checksum']:02X}")
     print("wrote", OUT / "expected_packets.json")
     print("wrote", OUT / "expected_packets.sv")
 
