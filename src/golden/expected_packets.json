@@ -1,7 +1,7 @@
 {
  "source": "src/ecg_rom.hex (on-disk, 8-bit, 2048 samples) \u2014 the exact byte stream the DUT paces through",
  "provenance": {
-  "source_revision": "3a8d93f0149748793112bf4c556c81d44faf46da",
+  "source_revision": "1ec00761153d5151771b8283d3f2dfc80ed50531",
   "rom_hex": "src/ecg_rom.hex",
   "rom_hex_bytes": 8192,
   "rom_hex_sha256": "23fb1c0620b01ad1447e4a1983ff334846f50013ddd9b5b9c65ab866ffb8e82f",

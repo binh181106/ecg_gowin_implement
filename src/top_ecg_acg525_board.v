@@ -9,19 +9,23 @@ module top_ecg_acg525_board #(
     output wire [3:0] status_led
 );
 
-    reg [7:0]  startup_shift = 8'd0;
+    reg [7:0] startup_shift = 8'd0;
     reg [24:0] heartbeat_count = 25'd0;
-    reg [2:1]  sticky_stage;
+    reg [2:1] sticky_stage;
 
-    wire       demo_rst_n;
+    wire demo_rst_n;
     wire [3:0] demo_status;
     wire [3:0] debug_led;
 
     assign demo_rst_n = startup_shift[7];
 
     always @(posedge sys_clk) begin
-        startup_shift   <= {startup_shift[6:0], 1'b1};
         heartbeat_count <= heartbeat_count + 25'd1;
+
+        if (!startup_shift[7]) begin
+            if (heartbeat_count >= 25'd5_000_000)
+                startup_shift <= {startup_shift[6:0], 1'b1};
+        end
     end
 
     top_ecg_rom_demo #(
@@ -49,7 +53,13 @@ module top_ecg_acg525_board #(
             sticky_stage <= sticky_stage | demo_status[2:1];
     end
 
-    assign debug_led = {demo_rst_n, sticky_stage, heartbeat_count[24]};
-    assign status_led = LED_ACTIVE_LOW ? ~debug_led : debug_led;
+    assign debug_led = {
+        demo_rst_n,
+        sticky_stage,
+        heartbeat_count[24]
+    };
+
+    assign status_led =
+        LED_ACTIVE_LOW ? ~debug_led : debug_led;
 
 endmodule

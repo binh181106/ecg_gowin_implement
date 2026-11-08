@@ -17,7 +17,7 @@
   "SubInsts" : [
    {
     "InstFile" : "H:/IC Design/Code/Gowin_Work/ecg_gowin_implement/src/top_ecg_acg525_board.v",
-    "InstLine" : 34,
+    "InstLine" : 38,
     "InstName" : "u_demo",
     "ModuleFile" : "H:/IC Design/Code/Gowin_Work/ecg_gowin_implement/src/top_ecg_rom_demo.v",
     "ModuleLine" : 2,
