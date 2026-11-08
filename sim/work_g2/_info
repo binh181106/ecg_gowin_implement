@@ -1,0 +1,102 @@
+m255
+K4
+z2
+13
+!s112 1.1
+!i10d 8192
+!i10e 25
+!i10f 100
+cModel Technology
+Z0 dH:/IC Design/Code/Gowin_Work/ecg_gowin_implement
+T_opt
+!s110 1794143409
+V1kP_^U2aH99kBJG7WCHg52
+04 16 4 work tb_g1_rom_golden fast 0
+=1-c8530905c11f-6af074b1-72-5dd0
+Z1 o-quiet -auto_acc_if_foreign -work sim/work_g2
+Z2 tCvgOpt 0
+n@_opt
+Z3 OL;O;10.7c;67
+R0
+T_opt1
+!s110 1794143410
+VEL5FGW1T64DBk;YGXjWlQ1
+04 21 4 work tb_feature_checkpoint fast 0
+=1-c8530905c11f-6af074b2-2e6-5f60
+R1
+R2
+n@_opt1
+R3
+R0
+vfeature_extraction
+Z4 DXx6 sv_std 3 std 0 22 d=_JfHTnXCN[H5FjiaJJc0
+Z5 !s110 1794143865
+!i10b 1
+!s100 Y]EWmDoa4cd1_=3l@zUQD3
+IL6C6M;1R`kgV7325XgL?a2
+Z6 VDg1SIo80bB@j0V0VzS_@n1
+!s105 feature_extraction_v_unit
+S1
+R0
+w1794141117
+8src/feature_extraction.v
+Fsrc/feature_extraction.v
+L0 3
+Z7 OL;L;10.7c;67
+r1
+!s85 0
+31
+Z8 !s108 1794143865.000000
+!s107 sim/tb_feature_checkpoint.sv|sim/tb_g1_rom_golden.sv|src/feature_extraction.v|
+Z9 !s90 -sv|-work|sim/work_g2|-l|sim/g2_vlog.log|src/feature_extraction.v|sim/tb_g1_rom_golden.sv|sim/tb_feature_checkpoint.sv|
+!i113 0
+Z10 o-sv -work sim/work_g2 -L mtiAvm -L mtiRnm -L mtiOvm -L mtiUvm -L mtiUPF -L infact
+R2
+vtb_feature_checkpoint
+R4
+R5
+!i10b 1
+!s100 ec7VXZ`6zjRWZV<]1h;<20
+I=i:U^iKk6<jhJE1V9GNC03
+R6
+!s105 tb_feature_checkpoint_sv_unit
+S1
+R0
+w1794143296
+8sim/tb_feature_checkpoint.sv
+Fsim/tb_feature_checkpoint.sv
+L0 24
+R7
+r1
+!s85 0
+31
+R8
+Z11 !s107 sim/tb_feature_checkpoint.sv|sim/tb_g1_rom_golden.sv|src/feature_extraction.v|
+R9
+!i113 0
+R10
+R2
+vtb_g1_rom_golden
+R4
+R5
+!i10b 1
+!s100 n44mZhi?ef<bZT>aI7k>l2
+IL@fYf;Lj49mTl:<TgbI:R1
+R6
+!s105 tb_g1_rom_golden_sv_unit
+S1
+R0
+w1794141900
+8sim/tb_g1_rom_golden.sv
+Fsim/tb_g1_rom_golden.sv
+L0 18
+R7
+r1
+!s85 0
+31
+R8
+R11
+R9
+!i113 0
+R10
+R2

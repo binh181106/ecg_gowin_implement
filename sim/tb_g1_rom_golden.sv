@@ -160,24 +160,27 @@ module tb_g1_rom_golden;
         load_rom();
 
         // ---------------- expected values (G2 golden) ------------------
+        // crest = floor(|peak| * 2^16 / rms_fp), rms_fp = isqrt(mean_sq << 16)
+        // (Q8.8 internal RMS); regenerating golden_model.py is the source of
+        // truth for these numbers.
         exp_rms[0]=4;   exp_var[0]=19;  exp_peak[0]=65; exp_zc[0]=0;
-        exp_ptp[0]=65;  exp_crest[0]=4160; exp_half[0]=4096; exp_max[0]=65;
+        exp_ptp[0]=65;  exp_crest[0]=3820; exp_half[0]=4096; exp_max[0]=65;
         exp_rr[0]=0;    exp_rprev[0]=0; exp_ratio[0]=4096; exp_rrd[0]=0;
 
         exp_rms[1]=5;   exp_var[1]=27;  exp_peak[1]=76; exp_zc[1]=0;
-        exp_ptp[1]=76;  exp_crest[1]=3891; exp_half[1]=4096; exp_max[1]=76;
+        exp_ptp[1]=76;  exp_crest[1]=3678; exp_half[1]=4096; exp_max[1]=76;
         exp_rr[1]=0;    exp_rprev[1]=0; exp_ratio[1]=4096; exp_rrd[1]=0;
 
         exp_rms[2]=8;   exp_var[2]=69;  exp_peak[2]=86; exp_zc[2]=0;
-        exp_ptp[2]=86;  exp_crest[2]=2752; exp_half[2]=4096; exp_max[2]=86;
+        exp_ptp[2]=86;  exp_crest[2]=2612; exp_half[2]=4096; exp_max[2]=86;
         exp_rr[2]=299;  exp_rprev[2]=0; exp_ratio[2]=4096; exp_rrd[2]=299;
 
         exp_rms[3]=8;   exp_var[3]=72;  exp_peak[3]=86; exp_zc[3]=0;
-        exp_ptp[3]=86;  exp_crest[3]=2752; exp_half[3]=4096; exp_max[3]=86;
+        exp_ptp[3]=86;  exp_crest[3]=2577; exp_half[3]=4096; exp_max[3]=86;
         exp_rr[3]=43;   exp_rprev[3]=0; exp_ratio[3]=4096; exp_rrd[3]=43;
 
         exp_rms[4]=7;   exp_var[4]=62;  exp_peak[4]=76; exp_zc[4]=0;
-        exp_ptp[4]=76;  exp_crest[4]=2779; exp_half[4]=4096; exp_max[4]=76;
+        exp_ptp[4]=76;  exp_crest[4]=2452; exp_half[4]=4096; exp_max[4]=76;
         exp_rr[4]=0;    exp_rprev[4]=0; exp_ratio[4]=4096; exp_rrd[4]=0;
 
         exp_rms[5]=8;   exp_var[5]=63;  exp_peak[5]=77; exp_zc[5]=0;
@@ -185,7 +188,7 @@ module tb_g1_rom_golden;
         exp_rr[5]=0;    exp_rprev[5]=0; exp_ratio[5]=4096; exp_rrd[5]=0;
 
         exp_rms[6]=8;   exp_var[6]=65;  exp_peak[6]=83; exp_zc[6]=0;
-        exp_ptp[6]=83;  exp_crest[6]=2656; exp_half[6]=4096; exp_max[6]=83;
+        exp_ptp[6]=83;  exp_crest[6]=2616; exp_half[6]=4096; exp_max[6]=83;
         exp_rr[6]=463;  exp_rprev[6]=0; exp_ratio[6]=4096; exp_rrd[6]=463;
 
         $display("G1/G2 ROM GOLDEN: 7 windows, G2 arithmetic (RMS/var/crest)");

@@ -1,0 +1,28 @@
+# vsim -c -l sim/g2_checkpoint.log sim/work_g2.tb_feature_checkpoint -do "onerror {quit -code 1 -f}; run -all; quit -code 0 -f" 
+# Start time: 20:17:47 on Nov 08,2026
+# ** Note: (vsim-8009) Loading existing optimized design _opt1
+# //  Questa Sim-64
+# //  Version 10.7c win64 Aug 18 2018
+# //
+# //  Copyright 1991-2018 Mentor Graphics Corporation
+# //  All Rights Reserved.
+# //
+# //  QuestaSim and its associated documentation contain trade
+# //  secrets and commercial or financial information that are the property of
+# //  Mentor Graphics Corporation and are privileged, confidential,
+# //  and exempt from disclosure under the Freedom of Information Act,
+# //  5 U.S.C. Section 552. Furthermore, this information
+# //  is prohibited from disclosure under the Trade Secrets Act,
+# //  18 U.S.C. Section 1905.
+# //
+# Loading sv_std.std
+# Loading work.tb_feature_checkpoint(fast)
+# onerror {quit -code 1 -f}
+#  Warning: onerror command for use within macro
+#  run -all
+# G2 FEATURE CHECKPOINT: corners (RMS/crest/var/RR + reset-mid)
+# G2 CHECKPOINT PASS cases=10 checks=131
+# ** Note: $finish    : sim/tb_feature_checkpoint.sv(269)
+#    Time: 319271 ns  Iteration: 0  Instance: /tb_feature_checkpoint
+# End time: 20:17:48 on Nov 08,2026, Elapsed time: 0:00:01
+# Errors: 0, Warnings: 0

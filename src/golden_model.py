@@ -13,22 +13,26 @@ Pipeline mirrored bit-for-bit against src/*.v (formulas recorded per revision):
      window_ready at totals T = 512, 768, ... (stride 256) -> 7 windows.
   2. feature_extraction:
        sxe   = sign-extended 8-bit sample (x >= 128 -> x-256)
-       f_rms = s16( isqrt( (sum_sq & 0xFFFFFFFF) >> 9 ) )   (TRUE RMS; the
-                   RTL computes it with a digit-by-step restoring sqrt,
-                   2 radicand bits per cycle, 8 cycles)
+       f_rms = s16( isqrt( (sum_sq & 0xFFFFFFFF) >> 9 << 16 ) >> 8 )
+               = integer part of the TRUE RMS. The RTL computes a Q8.8
+               internal rms_fp = isqrt(mean_square << 16) with a digit-by-
+               step restoring sqrt (2 bits/cycle, 16 cycles); f_rms is the
+               high byte (rms_fp >> 8).
        f_var = s16( (512*sum_sq - sum^2) >> 18 )   (population variance;
                    always >= 0 by Cauchy-Schwarz; max 16256)
        f_peak/f_max/f_ptp, f_zc (bit7 changes), f_half = pos_cnt<<3
        f_crest  and f_rr_ratio: the RTL 28-bit unsigned restoring
-               (shift-subtract) divider, i.e. floor(N*4096 / D) narrowed to
+               (shift-subtract) divider, i.e. floor(N / D) narrowed to
                16 bits, reproduced here with independent Python integer
                division (NO 16-bit truncation of the numerator):
-                 f_crest    = s16( sign(peak) * (abs(peak)*256) // rms )
-                              (Q7.8; rms == 0 -> 0)
+                 f_crest    = s16( sign(peak) * (abs(peak) << 16) // rms_fp )
+                              where rms_fp is the INTERNAL Q8.8 RMS, not the
+                              rounded integer f_rms (Q8.0 of the crest
+                              factor; rms_fp == 0 -> 0)
                  f_rr_ratio = s16( (rr_cur*4096) // rr_prev )
                               (rr_prev == 0 -> 4096, the RTL div-by-0 guard)
-     Validated against sim/tb_g1_rom_golden.sv (7 ROM windows, 91 checks,
-     PASS) and sim/tb_feature_checkpoint.sv vectors.
+     Validated against sim/tb_g1_rom_golden.sv (7 ROM windows, checks PASS)
+     and sim/tb_feature_checkpoint.sv vectors.
   3. ai_classifier: placeholder ZERO weights -> all outputs 0, argmax tie ->
      class 0, no overflow (pipeline/math check only, NOT classification
      quality). Every packet: class byte = 0, flags byte = 0.
@@ -142,13 +146,16 @@ def main():
         ssum = s32(sum(sxe))
         ssumsq = sum(v * v for v in sxe)
 
-        # f_rms (G2): TRUE RMS. The RTL takes mean_square = sum_square >> 9
-        # and computes its integer square root with a digit-by-step restoring
-        # sqrt (2 radicand bits per cycle, 8 cycles). Python's isqrt() is the
-        # exact same function (floor(sqrt(x))), verified bit-exact over all
-        # 65536 16-bit inputs.
+        # f_rms (G2): TRUE RMS, computed at Q8.8 internal precision.
+        # The RTL takes a 32-bit radicand (mean_square << 16) and a
+        # digit-by-step restoring sqrt (2 bits/cycle, 16 cycles) -> a 16-bit
+        # Q8.8 result.  Python's isqrt() is the exact same floor(sqrt(x)),
+        # verified bit-exact over all 65536 mean_square values.
+        #   rms_fp = isqrt(mean_square << 16)   (Q8.8)
+        #   f_rms  = rms_fp >> 8                (integer part of the RMS)
         mean_sq = (ssumsq & 0xFFFFFFFF) >> 9
-        rms16 = s16(isqrt(mean_sq))
+        rms_fp = isqrt(mean_sq << 16)          # internal Q8.8 RMS
+        rms16 = s16(rms_fp >> 8)               # f_rms output (integer part)
 
         # f_var (G2): population variance, always >= 0.
         #   var = (512*sum_sq - sum^2) / 512^2 = (512*sum_sq - sum^2) >> 18
@@ -163,21 +170,24 @@ def main():
         peak = max(sxe)
         minv = min(sxe)
 
-        # f_crest (G2): |peak| / rms in Q7.8, via the RTL 28-bit restoring
-        # divider (feature_extraction.v S_DIV_CREST):
-        #   numerator = {12'd0, mag_peak, 8'd0} == mag_peak * 256 (28 bits)
-        #   divisor   = rms (16-bit unsigned)
-        #   quotient  = floor(numerator/divisor), narrowed to div_quot[15:0]
+        # f_crest (G2): crest factor = |peak| / rms, but the divisor is the
+        # INTERNAL Q8.8 rms_fp (not the rounded integer f_rms), so the
+        # quotient carries the RMS's internal precision. Mirrors the RTL:
+        #   numerator = mag_peak << 16  ({4'd0, mag_peak, 16'd0}, 28-bit)
+        #   divisor   = rms_fp (Q8.8)
+        #   quotient  = floor((mag_peak*2^16) / rms_fp) via the 28-bit
+        #                restoring divider, narrowed to div_quot[15:0]
         #   sign      = sign of peak_reg (not of the magnitude)
-        #   rms == 0  -> f_crest = 0 (RTL branch, feature_extraction.v:306)
-        # Q7.8 (not Q4.12) so the quotient cannot overflow 16 bits:
-        # max = 127*256 = 32512 < 65536.
+        #   rms_fp == 0  -> f_crest = 0 (RTL branch)
+        # The value is the crest factor scaled by 256 (Q8.0 of the ratio):
+        # (mag_peak*2^16)/(rms*2^8) = (mag_peak/rms)*256.
+        # int16-safe: max = 127*256 = 32512 < 32768.
         mag_peak = (-peak) & 0xFF if peak < 0 else peak
-        if rms16 > 0:
-            num = mag_peak * 256
+        if rms_fp > 0:
+            num = mag_peak << 16
             if num >= (1 << 28):
                 raise SystemExit(f"w{i}: crest numerator {num} exceeds 28 bits")
-            q = rtl_restoring_divider(num, rms16)
+            q = rtl_restoring_divider(num, rms_fp)
             if q >= (1 << 16):
                 raise SystemExit(f"w{i}: crest quotient {q} exceeds 16 bits")
             crest = -q if peak < 0 else q

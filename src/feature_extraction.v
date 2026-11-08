@@ -65,11 +65,11 @@ module feature_extraction #(
     reg [15:0] rr_previous;
     reg [7:0] sample_delayed;
 
-    reg [15:0] sq_in;        // mean_square (sum_square[31:0] >> 9), 16-bit
-    reg [12:0] sq_rem;       // sqrt remainder (bounds < 4*root+3 <= 4095)
-    reg [7:0]  sq_root;      // sqrt result, 8-bit (0..128)
-    reg [3:0]  sq_cnt;       // sqrt iteration count (2 bits/iter, 8 iters)
-    reg [15:0] rms_reg;      // computed RMS (the sqrt result), unsigned
+    reg [31:0] sq_in;       // sqrt radicand = mean_square << 16 (32-bit)
+    reg [15:0] sq_rem;      // sqrt remainder (< 4*root+3, 16 bits for 16-bit root)
+    reg [15:0] sq_root;      // sqrt result Q8.8 (0..32768), internal RMS
+    reg [4:0]  sq_cnt;       // sqrt iteration count (2 bits/iter, 16 iters)
+    reg [15:0] rms_reg;      // = sq_root, the internal Q8.8 RMS used as crest divisor
 
     reg [27:0] div_dividend;
     reg [27:0] div_quot;
@@ -94,14 +94,14 @@ module feature_extraction #(
     wire signed [63:0] var_num =
         ($signed(sum_square) <<< 9) - (sum_sq64 * sum_sq64);
 
-    // Digit-by-step square root (restoring), 2 bits per iteration.
-    // Each cycle feeds the next 2 bits of sq_in (from MSB). The candidate
-    // remainder is (sq_rem*4 | top2); trial = (root*4 | 1). If candidate
-    // >= trial: subtract, accept bit. Verifies isqrt exactly for all
-    // 16-bit inputs (8 iterations).
-    wire [1:0]  sq_top   = sq_in[15:14];
-    wire [14:0] sq_cand  = {sq_rem, 2'b00} | {11'd0, sq_top};
-    wire [14:0] sq_trial = {sq_root, 2'd1};
+    // Digit-by-step square root (restoring), 2 radicand bits per cycle.
+    // Operates on a 32-bit radicand (sq_in = mean_square << 16) -> 16-bit
+    // root in Q8.8. 16 iterations; each feeds the next 2 bits of sq_in.
+    // Invariant: sq_root = floor(sqrt(prefix));  candidate remainder
+    // (sq_rem*4 | top2) vs trial (sq_root*4 | 1). Verifies isqrt() exactly.
+    wire [1:0]  sq_top   = sq_in[31:30];
+    wire [19:0] sq_cand  = {sq_rem, sq_top};
+    wire [19:0] sq_trial = {sq_root, 2'd1};
     wire        sq_acc    = sq_cand >= sq_trial;
 
     always @(posedge clk or negedge rst_n) begin
@@ -125,10 +125,10 @@ module feature_extraction #(
             rr_previous    <= 16'd0;
             sample_delayed <= 8'd0;
 
-            sq_in          <= 16'd0;
-            sq_rem         <= 13'd0;
-            sq_root        <= 8'd0;
-            sq_cnt         <= 4'd0;
+            sq_in          <= 32'd0;
+            sq_rem         <= 16'd0;
+            sq_root        <= 16'd0;
+            sq_cnt         <= 5'd0;
             rms_reg        <= 16'd0;
 
             div_dividend   <= 28'd0;
@@ -164,10 +164,10 @@ module feature_extraction #(
             rr_previous    <= 16'd0;
             sample_delayed <= 8'd0;
 
-            sq_in          <= 16'd0;
-            sq_rem         <= 13'd0;
-            sq_root        <= 8'd0;
-            sq_cnt         <= 4'd0;
+            sq_in          <= 32'd0;
+            sq_rem         <= 16'd0;
+            sq_root        <= 16'd0;
+            sq_cnt         <= 5'd0;
             rms_reg        <= 16'd0;
 
             div_dividend   <= 28'd0;
@@ -196,10 +196,10 @@ module feature_extraction #(
                         rr_current     <= 16'd0;
                         rr_previous    <= 16'd0;
                         sample_delayed <= 8'd0;
-                        sq_in          <= 16'd0;
-                        sq_rem         <= 13'd0;
-                        sq_root        <= 8'd0;
-                        sq_cnt         <= 4'd0;
+                        sq_in          <= 32'd0;
+                        sq_rem         <= 16'd0;
+                        sq_root        <= 16'd0;
+                        sq_cnt         <= 5'd0;
                         rms_reg        <= 16'd0;
                         sample_addr    <= 9'd0;
                     end
@@ -283,35 +283,42 @@ module feature_extraction #(
                     state <= S_CALC_RMS;
                 end
 
-                // Start the square root of mean_square.
+                // Start the square root of mean_square. Operate on a 32-bit
+                // radicand (mean_square << 16) so the root is the RMS in
+                // Q8.8 (internal fixed-point precision), 16 iterations.
                 S_CALC_RMS: begin
-                    sq_in   <= mean_sq;
-                    sq_rem  <= 13'd0;
-                    sq_root <= 8'd0;
-                    sq_cnt  <= 4'd0;
+                    sq_in   <= {mean_sq, 16'd0};
+                    sq_rem  <= 16'd0;
+                    sq_root <= 16'd0;
+                    sq_cnt  <= 5'd0;
                     state   <= S_CALC_SQRT;
                 end
 
-                // Digit-by-step sqrt, 2 radicand bits per cycle, 8 cycles.
-                // Invariant: sq_root = floor(sqrt(prefix)),
-                //            sq_rem  = prefix - sq_root^2.
+                // Digit-by-step restoring sqrt, 2 radicand bits per cycle,
+                // 16 cycles on the 32-bit input. Invariant:
+                //   sq_root = floor(sqrt(prefix)),  sq_rem = prefix - sq_root^2.
+                // f_rms = integer part (sq_root >> 8); rms_reg keeps the full
+                // Q8.8 value so crest divides by internal precision.
                 S_CALC_SQRT: begin
-                    if (sq_cnt == 4'd8) begin
-                        rms_reg <= {8'd0, sq_root};
-                        f_rms    <= $signed({8'd0, sq_root});
+                    if (sq_cnt == 5'd16) begin
+                        rms_reg <= sq_root;
+                        f_rms    <= $signed({8'd0, sq_root[15:8]});
                         state    <= S_DIV_CREST;
                     end else begin
                         sq_rem  <= sq_acc ? (sq_cand - sq_trial) : sq_cand;
-                        sq_root <= sq_acc ? {sq_root[6:0], 1'b1}
-                                         : {sq_root[6:0], 1'b0};
+                        sq_root <= sq_acc ? {sq_root[14:0], 1'b1}
+                                         : {sq_root[14:0], 1'b0};
                         sq_in   <= sq_in << 2;
-                        sq_cnt  <= sq_cnt + 4'd1;
+                        sq_cnt  <= sq_cnt + 5'd1;
                     end
                 end
 
-                // Crest factor = |peak| / rms in Q7.8 (numerator mag*256).
-                // Q7.8 (not Q4.12) so the quotient cannot overflow 16 bits:
-                // max = 127*256 = 32512 < 65536.
+                // Crest factor = |peak| / rms, using the INTERNAL Q8.8 rms
+                // (rms_reg) as the divisor -- NOT the integer f_rms, which is
+                // rounded and would inject truncation error. Numerator
+                // mag_peak << 16; the quotient is the crest factor in Q8
+                // (ratio * 256). int16-safe: max ratio 127 (rms_fp>=256)
+                // -> 127*256 = 32512 < 32768.
                                S_DIV_CREST: begin
                     if (div_cnt == 6'd0) begin
                         if (rms_reg == 16'd0) begin
@@ -320,7 +327,7 @@ module feature_extraction #(
                             state   <= S_DIV_RR;
                         end else begin
                             div_divisor  <= rms_reg;
-                            div_dividend <= {12'd0, mag_peak, 8'd0};
+                            div_dividend <= {4'd0, mag_peak, 16'd0};
                             div_quot     <= 28'd0;
                             div_rem      <= 17'd0;
                             div_cnt      <= 6'd1;
