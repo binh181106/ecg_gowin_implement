@@ -1,0 +1,67 @@
+m255
+K4
+z2
+13
+!s112 1.1
+!i10d 8192
+!i10e 25
+!i10f 100
+cModel Technology
+Z0 dH:/IC Design/Code/Gowin_Work/ecg_gowin_implement
+T_opt
+!s110 1794125508
+VABThdg8PmUBh45WfmZ]BO2
+04 16 4 work tb_g1_rom_golden fast 0
+=1-c8530905c11f-6af02ec3-27f-4944
+o-quiet -auto_acc_if_foreign -work sim/work_g1
+Z1 tCvgOpt 0
+n@_opt
+OL;O;10.7c;67
+vfeature_extraction
+Z2 DXx6 sv_std 3 std 0 22 d=_JfHTnXCN[H5FjiaJJc0
+Z3 !s110 1794125451
+!i10b 1
+!s100 ;W7>7UYCDGHIznTf[cPb[0
+IX5YW@^P6X2=:FY4`e:UFJ3
+Z4 VDg1SIo80bB@j0V0VzS_@n1
+!s105 feature_extraction_v_unit
+S1
+R0
+w1794125116
+8src/feature_extraction.v
+Fsrc/feature_extraction.v
+L0 3
+Z5 OL;L;10.7c;67
+r1
+!s85 0
+31
+Z6 !s108 1794125451.000000
+Z7 !s107 sim/tb_g1_rom_golden.sv|src/feature_extraction.v|
+Z8 !s90 -sv|-work|sim/work_g1|src/feature_extraction.v|sim/tb_g1_rom_golden.sv|-l|sim/g1_vlog.log|
+!i113 0
+Z9 o-sv -work sim/work_g1 -L mtiAvm -L mtiRnm -L mtiOvm -L mtiUvm -L mtiUPF -L infact
+R1
+vtb_g1_rom_golden
+R2
+R3
+!i10b 1
+!s100 cf=Hh9`Xl=o9MhiF87b0Y0
+Ia3QQI6;:iOKXZ8W1WET>R0
+R4
+!s105 tb_g1_rom_golden_sv_unit
+S1
+R0
+w1794125243
+8sim/tb_g1_rom_golden.sv
+Fsim/tb_g1_rom_golden.sv
+L0 18
+R5
+r1
+!s85 0
+31
+R6
+R7
+R8
+!i113 0
+R9
+R1

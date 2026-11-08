@@ -1,0 +1,10 @@
+QuestaSim-64 vlog 10.7c Compiler 2018.08 Aug 18 2018
+Start time: 15:10:51 on Nov 08,2026
+vlog -sv -work sim/work_g1 src/feature_extraction.v sim/tb_g1_rom_golden.sv -l sim/g1_vlog.log 
+-- Compiling module feature_extraction
+-- Compiling module tb_g1_rom_golden
+
+Top level modules:
+	tb_g1_rom_golden
+End time: 15:10:51 on Nov 08,2026, Elapsed time: 0:00:00
+Errors: 0, Warnings: 0

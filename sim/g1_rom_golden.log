@@ -1,0 +1,36 @@
+# vsim -c -l sim/g1_rom_golden.log sim/work_g1.tb_g1_rom_golden -do "onerror {quit -code 1 -f}; run -all; quit -code 0 -f" 
+# Start time: 15:11:47 on Nov 08,2026
+# ** Note: (vsim-3812) Design is being optimized...
+# //  Questa Sim-64
+# //  Version 10.7c win64 Aug 18 2018
+# //
+# //  Copyright 1991-2018 Mentor Graphics Corporation
+# //  All Rights Reserved.
+# //
+# //  QuestaSim and its associated documentation contain trade
+# //  secrets and commercial or financial information that are the property of
+# //  Mentor Graphics Corporation and are privileged, confidential,
+# //  and exempt from disclosure under the Freedom of Information Act,
+# //  5 U.S.C. Section 552. Furthermore, this information
+# //  is prohibited from disclosure under the Trade Secrets Act,
+# //  18 U.S.C. Section 1905.
+# //
+# Loading sv_std.std
+# Loading work.tb_g1_rom_golden(fast)
+# onerror {quit -code 1 -f}
+#  Warning: onerror command for use within macro
+#  run -all
+# G1/G2 ROM GOLDEN: 7 windows, G2 arithmetic (RMS/var/crest)
+#   chain: window -> rr_previous -> f_rr_ratio@feature_valid
+# G1 win=1 rr_previous=0 f_rr_ratio@feature_valid=4096 (0x1000)
+# G1 win=2 rr_previous=0 f_rr_ratio@feature_valid=4096 (0x1000)
+# G1 win=3 rr_previous=0 f_rr_ratio@feature_valid=4096 (0x1000)
+# G1 win=4 rr_previous=0 f_rr_ratio@feature_valid=4096 (0x1000)
+# G1 win=5 rr_previous=0 f_rr_ratio@feature_valid=4096 (0x1000)
+# G1 win=6 rr_previous=0 f_rr_ratio@feature_valid=4096 (0x1000)
+# G1 win=7 rr_previous=0 f_rr_ratio@feature_valid=4096 (0x1000)
+# G1/G2 CHECK PASS checks=91 errors=0
+# ** Note: $finish    : sim/tb_g1_rom_golden.sv(243)
+#    Time: 221491 ns  Iteration: 0  Instance: /tb_g1_rom_golden
+# End time: 15:11:48 on Nov 08,2026, Elapsed time: 0:00:01
+# Errors: 0, Warnings: 0

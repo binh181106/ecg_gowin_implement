@@ -1,0 +1,7 @@
+# vsim -c work_g1.tb_g1_rom_golden -do "quit -code 0 -f" 
+# Start time: 15:09:53 on Nov 08,2026
+# ** Error (suppressible): (vsim-19) Failed to access library 'work_g1' at "work_g1".
+# No such file or directory. (errno = ENOENT)
+# Error loading design
+# End time: 15:09:53 on Nov 08,2026, Elapsed time: 0:00:00
+# Errors: 1, Warnings: 0

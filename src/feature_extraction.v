@@ -45,6 +45,7 @@ module feature_extraction #(
     localparam S_DIV_CREST       = 4'd8;
     localparam S_DIV_RR          = 4'd9;
     localparam S_ACCUMULATE_WAIT = 4'd10;
+    localparam S_CALC_SQRT       = 4'd11;
     localparam DIV_BITS          = 28;
 
     reg [3:0] state;
@@ -64,8 +65,11 @@ module feature_extraction #(
     reg [15:0] rr_previous;
     reg [7:0] sample_delayed;
 
-    reg signed [63:0] mean_val;
-    reg signed [31:0] rms_calc;
+    reg [15:0] sq_in;        // mean_square (sum_square[31:0] >> 9), 16-bit
+    reg [12:0] sq_rem;       // sqrt remainder (bounds < 4*root+3 <= 4095)
+    reg [7:0]  sq_root;      // sqrt result, 8-bit (0..128)
+    reg [3:0]  sq_cnt;       // sqrt iteration count (2 bits/iter, 8 iters)
+    reg [15:0] rms_reg;      // computed RMS (the sqrt result), unsigned
 
     reg [27:0] div_dividend;
     reg [27:0] div_quot;
@@ -76,11 +80,29 @@ module feature_extraction #(
     wire [7:0] mag_peak =
         peak_reg[7] ? (8'd0 - peak_reg) : peak_reg;
 
-    wire signed [31:0] rms_now =
-        $signed(sum_square[31:0] >> 9);
+    // mean_square = sum_square / 512 (512 samples).
+    // Bound: sum_square <= 512 * 128^2 = 8,388,608 -> mean_sq <= 16384.
+    wire [15:0] mean_sq = sum_square[24:9];
 
-    wire signed [63:0] var_now =
-        (sum_square <<< 3) - ((mean_val * mean_val) >>> 12);
+    // f_var (G2): population variance, always >= 0 by Cauchy-Schwarz
+    // ((512*sum_sq) >= sum^2).  var = (512*sum_sq - sum^2) / 512^2
+    //        = (sum_sq*512 - sum^2) >> 18 (floor).
+    // Max for x in [-128..127], N=512: 16256 (fits signed 16-bit).
+    // NOTE: sum*sum must be computed in 64-bit -- in 32-bit it overflows
+    // (|sum| <= 65536 -> sum^2 up to 2^32).
+    wire signed [63:0] sum_sq64 = $signed({{32{sum[31]}}, sum});
+    wire signed [63:0] var_num =
+        ($signed(sum_square) <<< 9) - (sum_sq64 * sum_sq64);
+
+    // Digit-by-step square root (restoring), 2 bits per iteration.
+    // Each cycle feeds the next 2 bits of sq_in (from MSB). The candidate
+    // remainder is (sq_rem*4 | top2); trial = (root*4 | 1). If candidate
+    // >= trial: subtract, accept bit. Verifies isqrt exactly for all
+    // 16-bit inputs (8 iterations).
+    wire [1:0]  sq_top   = sq_in[15:14];
+    wire [14:0] sq_cand  = {sq_rem, 2'b00} | {11'd0, sq_top};
+    wire [14:0] sq_trial = {sq_root, 2'd1};
+    wire        sq_acc    = sq_cand >= sq_trial;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -102,6 +124,12 @@ module feature_extraction #(
             rr_current     <= 16'd0;
             rr_previous    <= 16'd0;
             sample_delayed <= 8'd0;
+
+            sq_in          <= 16'd0;
+            sq_rem         <= 13'd0;
+            sq_root        <= 8'd0;
+            sq_cnt         <= 4'd0;
+            rms_reg        <= 16'd0;
 
             div_dividend   <= 28'd0;
             div_quot       <= 28'd0;
@@ -136,6 +164,12 @@ module feature_extraction #(
             rr_previous    <= 16'd0;
             sample_delayed <= 8'd0;
 
+            sq_in          <= 16'd0;
+            sq_rem         <= 13'd0;
+            sq_root        <= 8'd0;
+            sq_cnt         <= 4'd0;
+            rms_reg        <= 16'd0;
+
             div_dividend   <= 28'd0;
             div_quot       <= 28'd0;
             div_divisor    <= 16'd0;
@@ -162,6 +196,11 @@ module feature_extraction #(
                         rr_current     <= 16'd0;
                         rr_previous    <= 16'd0;
                         sample_delayed <= 8'd0;
+                        sq_in          <= 16'd0;
+                        sq_rem         <= 13'd0;
+                        sq_root        <= 8'd0;
+                        sq_cnt         <= 4'd0;
+                        rms_reg        <= 16'd0;
                         sample_addr    <= 9'd0;
                     end
                 end
@@ -222,8 +261,6 @@ module feature_extraction #(
                 end
 
                 S_CALC_BASE: begin
-                    mean_val <= $signed(sum) <<< 3;
-
                     f_peak <= $signed({{8{peak_reg[7]}}, peak_reg});
                     f_max  <= $signed({{8{peak_reg[7]}}, peak_reg});
 
@@ -239,27 +276,51 @@ module feature_extraction #(
                     state        <= S_CALC_VAR;
                 end
 
+                // f_var = (512*sum_sq - sum^2) >> 18  (population variance,
+                // always >= 0). var_num < 2^32 so [33:18] is the exact value.
                 S_CALC_VAR: begin
-                    f_var <= $signed(var_now[15:0]);
+                    f_var <= $signed(var_num[33:18]);
                     state <= S_CALC_RMS;
                 end
 
+                // Start the square root of mean_square.
                 S_CALC_RMS: begin
-                    rms_calc <= $signed(sum_square[31:0] >> 9);
-                    f_rms    <= $signed(rms_now[15:0]);
-                    state    <= S_DIV_CREST;
+                    sq_in   <= mean_sq;
+                    sq_rem  <= 13'd0;
+                    sq_root <= 8'd0;
+                    sq_cnt  <= 4'd0;
+                    state   <= S_CALC_SQRT;
                 end
 
-                // Bo chia giu nguyen ban goc; se sua o buoc tiep theo.
+                // Digit-by-step sqrt, 2 radicand bits per cycle, 8 cycles.
+                // Invariant: sq_root = floor(sqrt(prefix)),
+                //            sq_rem  = prefix - sq_root^2.
+                S_CALC_SQRT: begin
+                    if (sq_cnt == 4'd8) begin
+                        rms_reg <= {8'd0, sq_root};
+                        f_rms    <= $signed({8'd0, sq_root});
+                        state    <= S_DIV_CREST;
+                    end else begin
+                        sq_rem  <= sq_acc ? (sq_cand - sq_trial) : sq_cand;
+                        sq_root <= sq_acc ? {sq_root[6:0], 1'b1}
+                                         : {sq_root[6:0], 1'b0};
+                        sq_in   <= sq_in << 2;
+                        sq_cnt  <= sq_cnt + 4'd1;
+                    end
+                end
+
+                // Crest factor = |peak| / rms in Q7.8 (numerator mag*256).
+                // Q7.8 (not Q4.12) so the quotient cannot overflow 16 bits:
+                // max = 127*256 = 32512 < 65536.
                                S_DIV_CREST: begin
                     if (div_cnt == 6'd0) begin
-                        if (rms_now[15:0] == 16'd0) begin
+                        if (rms_reg == 16'd0) begin
                             f_crest <= 16'd0;
                             div_cnt <= 6'd0;
                             state   <= S_DIV_RR;
                         end else begin
-                            div_divisor  <= rms_now[15:0];
-                            div_dividend <= {8'd0, mag_peak, 12'd0};
+                            div_divisor  <= rms_reg;
+                            div_dividend <= {12'd0, mag_peak, 8'd0};
                             div_quot     <= 28'd0;
                             div_rem      <= 17'd0;
                             div_cnt      <= 6'd1;

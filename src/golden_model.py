@@ -13,24 +13,22 @@ Pipeline mirrored bit-for-bit against src/*.v (formulas recorded per revision):
      window_ready at totals T = 512, 768, ... (stride 256) -> 7 windows.
   2. feature_extraction:
        sxe   = sign-extended 8-bit sample (x >= 128 -> x-256)
-       f_rms = s16( s32( (sum_sq & 0xFFFFFFFF) >> 9 ) )   (logical shift of
-                                                           the 32-bit slice)
-       f_var = s16( (8*sum_sq) - floor(sum*sum / 64) )
-               (mean_val = sum*8; var_now = (sum_sq<<<3) - ((mean_val**2)>>>12)
-                = 8*sum_sq - sum^2/64; the 64-bit reduced-product path is
-                asserted identical for this dataset)
+       f_rms = s16( isqrt( (sum_sq & 0xFFFFFFFF) >> 9 ) )   (TRUE RMS; the
+                   RTL computes it with a digit-by-step restoring sqrt,
+                   2 radicand bits per cycle, 8 cycles)
+       f_var = s16( (512*sum_sq - sum^2) >> 18 )   (population variance;
+                   always >= 0 by Cauchy-Schwarz; max 16256)
        f_peak/f_max/f_ptp, f_zc (bit7 changes), f_half = pos_cnt<<3
        f_crest  and f_rr_ratio: the RTL 28-bit unsigned restoring
                (shift-subtract) divider, i.e. floor(N*4096 / D) narrowed to
                16 bits, reproduced here with independent Python integer
                division (NO 16-bit truncation of the numerator):
-                 f_crest    = s16( sign(peak) * (abs(peak)*4096) // rms )
-                              (rms == 0 -> 0)
+                 f_crest    = s16( sign(peak) * (abs(peak)*256) // rms )
+                              (Q7.8; rms == 0 -> 0)
                  f_rr_ratio = s16( (rr_cur*4096) // rr_prev )
                               (rr_prev == 0 -> 4096, the RTL div-by-0 guard)
-     Validated against sim/tb_feature_checkpoint.sv vectors:
-     crest 409 / 204 / 21557, rr_ratio 6251 (all PASS in
-     sim/feature_checkpoint.log).
+     Validated against sim/tb_g1_rom_golden.sv (7 ROM windows, 91 checks,
+     PASS) and sim/tb_feature_checkpoint.sv vectors.
   3. ai_classifier: placeholder ZERO weights -> all outputs 0, argmax tie ->
      class 0, no overflow (pipeline/math check only, NOT classification
      quality). Every packet: class byte = 0, flags byte = 0.
@@ -49,6 +47,7 @@ Usage:  python -I src/golden_model.py
 import hashlib
 import json
 import subprocess
+from math import isqrt
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -143,45 +142,39 @@ def main():
         ssum = s32(sum(sxe))
         ssumsq = sum(v * v for v in sxe)
 
-        # f_rms: RTL does $signed(sum_square[31:0] >> 9) — the >> is a LOGICAL
-        # shift of the 32-bit slice (the part-select strips signedness), THEN
-        # the result is sign-extended and narrowed to 16 bits.
-        rms16 = s16(s32((ssumsq & 0xFFFFFFFF) >> 9))
+        # f_rms (G2): TRUE RMS. The RTL takes mean_square = sum_square >> 9
+        # and computes its integer square root with a digit-by-step restoring
+        # sqrt (2 radicand bits per cycle, 8 cycles). Python's isqrt() is the
+        # exact same function (floor(sqrt(x))), verified bit-exact over all
+        # 65536 16-bit inputs.
+        mean_sq = (ssumsq & 0xFFFFFFFF) >> 9
+        rms16 = s16(isqrt(mean_sq))
 
-        # f_var: mean_val = sum*8 (a 64-bit register, feature_extraction.v:225);
-        # var_now = (sum_square<<<3) - ((mean_val*mean_val) >>> 12).
-        #   mean_val*mean_val = (8*sum)^2 = 64*sum^2, so >>>12 == sum^2 >> 6
-        #   => var = 8*sum_sq - floor(sum^2/64).
-        # The RTL evaluates the product in the 64-bit `var_now` context (the
-        # lower 64 bits of the true product); compute that path AND the
-        # full-precision path and require them to agree for this dataset.
-        mean_val = ssum * 8
-        prod_true = mean_val * mean_val
-        prod_rtl = s64(prod_true)                    # 64-bit context truncation
-        if prod_rtl != prod_true:
-            raise SystemExit(
-                f"w{i}: mean_val*mean_val exceeds the RTL 64-bit context "
-                f"({prod_true} vs {prod_rtl}) — golden formula needs review")
-        m_shift = prod_rtl >> 12                    # arithmetic (floor) shift
-        var_rtl = s64((s64(ssumsq << 3)) - m_shift)
-        var_floor = (ssumsq * 8) - (ssum * ssum) // 64
-        if var_rtl != var_floor:
-            raise SystemExit(
-                f"w{i}: f_var formulas disagree: rtl={var_rtl} floor={var_floor}")
-        f_var = s16(var_rtl)
+        # f_var (G2): population variance, always >= 0.
+        #   var = (512*sum_sq - sum^2) / 512^2 = (512*sum_sq - sum^2) >> 18
+        # Cauchy-Schwarz guarantees 512*sum_sq >= sum^2, so the numerator is
+        # never negative. Max (x in [-128..127], N=512) = 16256 -> fits int16.
+        var_num = 512 * ssumsq - ssum * ssum
+        if var_num < 0:
+            raise SystemExit(f"w{i}: f_var numerator negative ({var_num}) — "
+                             f"formula or accumulation is broken")
+        f_var = s16(var_num >> 18)
 
         peak = max(sxe)
         minv = min(sxe)
 
-        # f_crest: the RTL 28-bit restoring divider (feature_extraction.v:254-294).
-        #   numerator = {8'd0, mag_peak, 12'd0}  == mag_peak * 4096  (28 bits)
-        #   divisor   = rms_now[15:0]            (16-bit unsigned)
+        # f_crest (G2): |peak| / rms in Q7.8, via the RTL 28-bit restoring
+        # divider (feature_extraction.v S_DIV_CREST):
+        #   numerator = {12'd0, mag_peak, 8'd0} == mag_peak * 256 (28 bits)
+        #   divisor   = rms (16-bit unsigned)
         #   quotient  = floor(numerator/divisor), narrowed to div_quot[15:0]
         #   sign      = sign of peak_reg (not of the magnitude)
-        #   rms == 0  -> f_crest = 0 (RTL branch, feature_extraction.v:256)
+        #   rms == 0  -> f_crest = 0 (RTL branch, feature_extraction.v:306)
+        # Q7.8 (not Q4.12) so the quotient cannot overflow 16 bits:
+        # max = 127*256 = 32512 < 65536.
         mag_peak = (-peak) & 0xFF if peak < 0 else peak
         if rms16 > 0:
-            num = mag_peak * 4096
+            num = mag_peak * 256
             if num >= (1 << 28):
                 raise SystemExit(f"w{i}: crest numerator {num} exceeds 28 bits")
             q = rtl_restoring_divider(num, rms16)
@@ -295,10 +288,10 @@ def main():
         },
         "formulas": {
             "baseline": "x = (raw >= 169) ? raw - 169 : 0",
-            "f_rms": "s16(s32((sum_sq & 0xFFFFFFFF) >> 9))",
-            "f_var": "s16(8*sum_sq - floor(sum^2/64))   [mean_val = sum*8]",
+            "f_rms": "s16(isqrt((sum_sq & 0xFFFFFFFF) >> 9))   [TRUE RMS]",
+            "f_var": "s16((512*sum_sq - sum^2) >> 18)   [population variance, >=0]",
             "f_crest": ("RTL 28-bit restoring divider: s16(sign(peak) * "
-                        "floor(abs(peak)*4096 / rms)); rms == 0 -> 0"),
+                        "floor(abs(peak)*256 / rms)); rms == 0 -> 0   [Q7.8]"),
             "f_rr_ratio": ("RTL 28-bit restoring divider: s16(floor(rr_cur*4096 "
                            "/ rr_prev)); rr_prev == 0 -> 4096"),
             "f_half_ratio": "s16(pos_cnt << 3)  (pos_cnt = count of bit7==0)",
