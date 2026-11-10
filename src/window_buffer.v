@@ -27,7 +27,9 @@ module window_buffer #(
     parameter DATA_WIDTH = 8,
     parameter WINDOW_SIZE = 512,
     parameter OVERLAP = 256,       // 50% overlap
-    parameter BASELINE_OFFSET = 169 // AD8232 baseline offset (~169-170 for 0V output)
+    parameter BASELINE_OFFSET = 169, // legacy G1 reproduction only
+    parameter PREPROCESS_MODE = 1,  // 0: legacy clamp, 1: ROM centered, 2: ADC offset
+    parameter [DATA_WIDTH-1:0] ADC_ZERO_CODE = 128 // nominal code; calibrate real ADC
 ) (
     input  wire              clk,
     input  wire              rst_n,
@@ -37,7 +39,7 @@ module window_buffer #(
     input  wire              sample_valid,
     input  wire              read_en,
     input  wire [8:0]        read_addr,
-    output wire [DATA_WIDTH-1:0] frame_out,
+    output wire signed [DATA_WIDTH-1:0] frame_out,
     output reg               window_ready,
     output reg               ready_bank,     // Alias for window_ready (backward compat)
     output reg  [31:0]       samples_collected,
@@ -51,18 +53,39 @@ module window_buffer #(
     localparam ADDR_MAX = WINDOW_SIZE - 1;  // 511
 
     // =============================================================================
-    // Baseline Subtraction
+    // Input representation (8-bit RAM interface; see G2_DESIGN_CONTRACT.txt)
     // =============================================================================
-    // AD8232 outputs ~169-170 at 0V, so we subtract to get true ECG signal
-    // Result is signed: sample - baseline (can be negative)
-    // Saturate at 0 if below baseline.
-    localparam [DATA_WIDTH-1:0] BASELINE_OFF_W = BASELINE_OFFSET;
-    wire [DATA_WIDTH:0] baseline_sub;
-    assign baseline_sub = {1'b0, sample_in} - {1'b0, BASELINE_OFF_W};
-    wire [DATA_WIDTH-1:0] baseline_corrected;
-    assign baseline_corrected = (sample_in >= BASELINE_OFF_W) ?
-                                baseline_sub[DATA_WIDTH-1:0] :
-                                {DATA_WIDTH{1'b0}};
+    // ROM input is unsigned min-max CODE data, not signed ECG or millivolts.
+    // Subtracting the digital midpoint is lossless: 0..255 -> -128..127.
+    // Offset-binary to two's-complement conversion only inverts the MSB.
+    // No sample register/latency is added. A real ADC uses a separate offset.
+    wire signed [DATA_WIDTH-1:0] preprocessed_sample;
+    generate
+        if (PREPROCESS_MODE == 0) begin : G_LEGACY
+            localparam [DATA_WIDTH-1:0] BASELINE_OFF_W = BASELINE_OFFSET;
+            wire [DATA_WIDTH:0] difference =
+                {1'b0, sample_in} - {1'b0, BASELINE_OFF_W};
+            assign preprocessed_sample = (sample_in >= BASELINE_OFF_W) ?
+                difference[DATA_WIDTH-1:0] : {DATA_WIDTH{1'b0}};
+        end else if (PREPROCESS_MODE == 1) begin : G_ROM_CENTERED
+            assign preprocessed_sample = {~sample_in[DATA_WIDTH-1],
+                                           sample_in[DATA_WIDTH-2:0]};
+        end else if (PREPROCESS_MODE == 2) begin : G_ADC_OFFSET
+            // Widen BOTH unsigned operands before signed subtraction.
+            wire signed [DATA_WIDTH:0] difference =
+                $signed({1'b0, sample_in}) - $signed({1'b0, ADC_ZERO_CODE});
+            localparam signed [DATA_WIDTH:0] MAX_SAMPLE =
+                {2'b00, {(DATA_WIDTH-1){1'b1}}};
+            localparam signed [DATA_WIDTH:0] MIN_SAMPLE =
+                {2'b11, {(DATA_WIDTH-1){1'b0}}};
+            assign preprocessed_sample = (difference > MAX_SAMPLE) ?
+                MAX_SAMPLE[DATA_WIDTH-1:0] : (difference < MIN_SAMPLE) ?
+                MIN_SAMPLE[DATA_WIDTH-1:0] : difference[DATA_WIDTH-1:0];
+        end else begin : G_INVALID_MODE
+            // Unsupported configuration is intentionally visible in simulation.
+            assign preprocessed_sample = {DATA_WIDTH{1'bx}};
+        end
+    endgenerate
 
     // =============================================================================
     // Write Pointer - circular, 0 to 511
@@ -135,7 +158,7 @@ module window_buffer #(
         .clka(clk),
         .cea(enable & sample_valid),
         .ada(write_ptr),
-        .din(baseline_corrected),
+        .din(preprocessed_sample),
         
         // --- PORT B: ĐỌC (READ) ---
         .clkb(clk),

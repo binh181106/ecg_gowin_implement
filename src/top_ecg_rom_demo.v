@@ -5,7 +5,9 @@ module top_ecg_rom_demo #(
     parameter ROM_WORDS   = 2048,
     parameter ROM_DW      = 8,
     parameter ROM_HEX     = "demo/ecg_rom.hex",
-    parameter integer UART_CLKS_PER_BIT = 437
+    parameter integer UART_CLKS_PER_BIT = 437,
+    parameter integer PREPROCESS_MODE = 1, // ROM unsigned codes -> signed raw-128
+    parameter [ROM_DW-1:0] ADC_ZERO_CODE = 128
 ) (
     input  wire             sys_clk,
     input  wire             sys_rst_n,
@@ -66,7 +68,7 @@ module top_ecg_rom_demo #(
     wire signed [15:0] f_half_ratio, f_max, f_rr, f_rr_prev, f_rr_ratio, f_rr_diff;
     wire [8:0] feat_read_addr;
     wire feat_read_en;
-    wire [ROM_DW-1:0] window_frame_wire;
+    wire signed [ROM_DW-1:0] window_frame_wire;
     wire [31:0] apb_paddr, apb_pwdata;
     wire apb_psel, apb_penable, apb_pwrite;
     reg [15:0] win_index;
@@ -94,7 +96,9 @@ module top_ecg_rom_demo #(
     window_buffer #(
         .DATA_WIDTH(ROM_DW),
         .WINDOW_SIZE(512),
-        .OVERLAP(256)
+        .OVERLAP(256),
+        .PREPROCESS_MODE(PREPROCESS_MODE),
+        .ADC_ZERO_CODE(ADC_ZERO_CODE)
     ) u_window (
         .clk(clk),
         .rst_n(rst_n),
