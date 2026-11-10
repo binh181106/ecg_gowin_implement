@@ -18,6 +18,9 @@ module top_ecg_rom_demo #(
 );
     wire clk   = sys_clk;
     wire rst_n = sys_rst_n;
+    wire ble_enable, uart_enable, soft_reset;
+    // A demo soft reset restarts the ROM and discards any partial UART frame.
+    wire demo_rst_n = rst_n && !soft_reset;
     wire [$clog2(ROM_WORDS)-1:0] rom_addr;
     wire [ROM_DW-1:0] rom_out;
     wire [ROM_DW-1:0] pace_data;
@@ -39,7 +42,7 @@ module top_ecg_rom_demo #(
         .ROM_DW(ROM_DW)
     ) u_pacer (
         .clk(clk),
-        .rst_n(rst_n),
+        .rst_n(demo_rst_n),
         .rom_out(rom_out),
         .rom_addr(rom_addr),
         .sample_data(pace_data),
@@ -51,6 +54,7 @@ module top_ecg_rom_demo #(
     wire window_enable, window_ready;
     wire feature_start, feat_valid, feature_overflow;
     wire mlp_start, mlp_done, mlp_overflow;
+    wire pipeline_error;
     wire [1:0] sys_class_code;
     wire sys_done, sys_busy, sys_start, sys_enable;
     wire sys_overflow;
@@ -58,7 +62,6 @@ module top_ecg_rom_demo #(
     wire csr_pready, csr_pslverr, csr_irq;
     wire uart_tx_busy, uart_tx_done;
     wire [15:0] ecg_threshold, baud_div;
-    wire ble_enable, uart_enable, soft_reset;
     wire signed [15:0] f_rms, f_var, f_peak, f_zc, f_ptp, f_crest;
     wire signed [15:0] f_half_ratio, f_max, f_rr, f_rr_prev, f_rr_ratio, f_rr_diff;
     wire [8:0] feat_read_addr;
@@ -67,8 +70,8 @@ module top_ecg_rom_demo #(
     wire [31:0] apb_paddr, apb_pwdata;
     wire apb_psel, apb_penable, apb_pwrite;
     reg [15:0] win_index;
-    always @(posedge clk or negedge rst_n) begin
-        if (!rst_n)
+    always @(posedge clk or negedge demo_rst_n) begin
+        if (!demo_rst_n)
             win_index <= 16'd0;
         else if (window_ready)
             win_index <= win_index + 16'd1;
@@ -78,7 +81,7 @@ module top_ecg_rom_demo #(
         .DIV_WIDTH(2)
     ) u_adc_if (
         .clk(clk),
-        .rst_n(rst_n),
+        .rst_n(demo_rst_n),
         .sample_rate_div(2'd1),
         .adc_data_in(pace_data),
         .adc_data_valid(pace_valid),
@@ -155,7 +158,8 @@ wire [191:0] features_flat = {
         .done(sys_done),
         .read_addr(),
         .current_state(),
-        .next_state_debug()
+        .next_state_debug(),
+        .pipeline_error(pipeline_error)
     );
     ai_classifier #(
         .FEATURE_WIDTH(16),
@@ -202,9 +206,10 @@ wire [191:0] features_flat = {
         .sys_overflow(sys_overflow)
     );
     wire pkt_req;
+    wire [1:0] result_class;
     demo_apb_seq u_seq (
         .pclk(clk),
-        .presetn(rst_n),
+        .presetn(demo_rst_n),
         .paddr(apb_paddr[7:0]),
         .psel(apb_psel),
         .penable(apb_penable),
@@ -213,23 +218,25 @@ wire [191:0] features_flat = {
         .pready(csr_pready),
         .prdata(csr_prdata),
         .sys_done(sys_done),
-        .pkt_req(pkt_req)
+        .pkt_req(pkt_req),
+        .end_of_data(pace_eod),
+        .result_class(result_class)
     );
     wire pkt_tx_start;
     wire [7:0]  pkt_tx_data;
     wire pkt_done_r, pkt_drop_r, pkt_busy_r;
     demo_uart_packetizer u_pz (
         .clk(clk),
-        .rst_n(rst_n),
+        .rst_n(demo_rst_n),
         .pkt_req(pkt_req),
         .win_index(win_index),
         .f0(f_rms), .f1(f_var), .f2(f_peak), .f3(f_zc), .f4(f_ptp),
         .f5(f_crest), .f6(f_half_ratio), .f7(f_max), .f8(f_rr),
         .f9(f_rr_prev), .f10(f_rr_ratio), .f11(f_rr_diff),
-        .class_code(csr_prdata[1:0]),
+        .class_code(result_class),
         .err_adc(adc_overflow),
         .err_feat(feature_overflow),
-        .err_mlp(mlp_overflow),
+        .err_mlp(mlp_overflow | pipeline_error),
         .tx_start(pkt_tx_start),
         .tx_data(pkt_tx_data),
         .tx_done_tick(uart_tx_done),
@@ -241,7 +248,7 @@ wire [191:0] features_flat = {
         .CLKS_PER_BIT(UART_CLKS_PER_BIT)
     ) u_uart_tx (
         .clk(clk),
-        .rst_n(rst_n),
+        .rst_n(demo_rst_n),
         .baud_div(baud_div),
         .tx_data(pkt_tx_data),
         .tx_start(pkt_tx_start),
@@ -251,14 +258,14 @@ wire [191:0] features_flat = {
         .uart_txd(uart_txd)
     );
     assign sys_busy     = ~fsm_idle;
-    assign sys_overflow = adc_overflow | feature_overflow | mlp_overflow;
+    assign sys_overflow = adc_overflow | feature_overflow | mlp_overflow | pipeline_error;
     reg demo_done_r;
-    always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) demo_done_r <= 1'b0;
+    always @(posedge clk or negedge demo_rst_n) begin
+        if (!demo_rst_n) demo_done_r <= 1'b0;
         else if (pkt_done_r) demo_done_r <= 1'b1;
     end
     assign demo_done     = demo_done_r;
-    assign demo_overflow = adc_overflow | feature_overflow | mlp_overflow | pkt_drop_r;
+    assign demo_overflow = sys_overflow | pkt_drop_r;
     assign demo_class    = sys_class_code;
     assign status_led[0] = sys_done;
     assign status_led[1] = adc_sample_valid;

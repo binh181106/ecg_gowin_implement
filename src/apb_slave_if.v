@@ -50,7 +50,7 @@ module apb_slave_if #(
             ctrl_reg   <= 32'h0;
             thresh_reg <= 32'h00000050;
             baud_reg   <= 32'h000001B5;
-            config_reg <= 32'h0;
+            config_reg <= 32'h2; // matches uart_enable reset value
             sys_enable    <= 1'b0;
             sys_start     <= 1'b0;
             ecg_threshold <= 16'd80;
@@ -59,12 +59,14 @@ module apb_slave_if #(
             uart_enable   <= 1'b1;
             soft_reset    <= 1'b0;
         end else begin
+            sys_start <= 1'b0;
             soft_reset <= 1'b0;
 
-            if (psel && pwrite && !penable) begin
+            // Side effects occur only at the accepted ACCESS edge.
+            if (psel && penable && pready && pwrite) begin
                 case (paddr[7:0])
                     ADDR_CTRL: begin
-                        ctrl_reg <= pwdata;
+                        ctrl_reg <= pwdata & ~32'h12; // START/RESET are strobes
                         sys_enable <= pwdata[0];
                         if (pwdata[1]) sys_start <= 1'b1;
                         if (pwdata[4]) soft_reset <= 1'b1;
@@ -85,8 +87,6 @@ module apb_slave_if #(
                 endcase
             end
 
-            // Clear pulse after 2 cycles
-            if (sys_start) sys_start <= 1'b0;
         end
     end
 
@@ -117,6 +117,7 @@ module apb_slave_if #(
 
     always @(posedge pclk or negedge presetn) begin
         if (!presetn) pready <= 1'b0;
+        // One wait cycle: registered PRDATA is valid BEFORE acceptance.
         else pready <= psel && penable;
     end
 

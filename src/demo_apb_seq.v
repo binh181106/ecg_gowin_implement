@@ -10,20 +10,17 @@
 //   PER-RESULT LOOP:  `done_seen` latches every 1-cycle sys_done (so a done
 //                     pulse is never missed while the sequencer is busy).
 //                     On done_seen:
-//                       APB READ ADDR_RESULT (SETUP then ACCESS; prdata valid
-//                       the cycle after the ACCESS posedge)
-//                       fire `pkt_req` on that cycle (the packetizer latches
-//                       class_code from prdata there)
+//                       APB READ ADDR_RESULT; latch PRDATA at acceptance
+//                       fire `pkt_req` using the stable result_class register
 //                       RE-START: APB write CTRL = 0x0000_0003 again.
 //
 // The FSM restart matters: control_fsm returns to IDLE after DONE (start was
-// a 2-cycle pulse) and from IDLE re-enters LOAD only on a NEW start while
+// a 1-cycle pulse) and from IDLE re-enters LOAD only on a NEW start while
 // apb_enable. One restart per result -> every window gets classified.
 //
 // APB AMBA3 timing: SETUP (psel=1, penable=0) -> ACCESS (psel=1, penable=1,
-// wait pready). This slave asserts pready in the ACCESS cycle; a write is
-// committed there and prdata is registered at the same posedge (read data
-// valid one cycle after ACCESS).
+// wait pready). A transfer completes only at a rising edge with both
+// PENABLE and PREADY high; PRDATA must already be valid at that edge.
 //
 // Demo-only: lives inside top_ecg_rom_demo; the demo top exposes NO APB pins
 // on the FPGA.
@@ -44,9 +41,11 @@ module demo_apb_seq (
 
     // Demo-internal trigger
     input  wire             sys_done,      // 1-cycle pulse per window result
+    input  wire             end_of_data,   // final ROM window: do not re-arm
 
-    // Packetizer request (1 cycle; prdata valid on this cycle)
-    output reg              pkt_req
+    // PRDATA may clear after ACCESS; this snapshot remains valid for pkt_req.
+    output reg              pkt_req,
+    output reg [1:0]        result_class
 );
 
     localparam [7:0] A_CTRL  = 8'h00;
@@ -77,6 +76,7 @@ module demo_apb_seq (
             pwrite    <= 1'b0;
             pwdata    <= 32'h0;
             pkt_req   <= 1'b0;
+            result_class <= 2'd0;
         end else begin
             // Latch every done pulse (even while mid-transaction).
             if (sys_done)
@@ -94,6 +94,7 @@ module demo_apb_seq (
                         penable <= 1'b0;
                         state   <= S_WRACC;
                     end else if (done_seen) begin
+                        done_seen <= sys_done; // consume old event, retain a new one
                         // SETUP of the RESULT read
                         paddr   <= A_RES;
                         pwrite  <= 1'b0;
@@ -109,7 +110,7 @@ module demo_apb_seq (
 
                 S_WRACC: begin
                     penable <= 1'b1;                     // ACCESS
-                    if (pready) begin
+                    if (penable && pready) begin
                         penable <= 1'b0;
                         pwrite  <= 1'b0;
                         psel    <= 1'b0;
@@ -124,29 +125,35 @@ module demo_apb_seq (
                 end
 
                 S_RDACC: begin
-                    if (pready) begin
+                    if (penable && pready) begin
+                        result_class <= prdata[1:0];
                         penable <= 1'b0;
                         psel    <= 1'b0;
-                        state   <= S_FIR;                // prdata valid next c
+                        state   <= S_FIR;
                     end
                 end
 
-                // prdata is valid this cycle -> fire the packet request and,
-                // in the same cycle, issue the SETUP of the restart write.
+                // Use the accepted read snapshot, then issue restart SETUP.
                 S_FIR: begin
                     pkt_req   <= 1'b1;
-                    done_seen <= 1'b0;                   // consume the done
-                    paddr    <= A_CTRL;
-                    pwdata   <= D_ENS;
-                    pwrite   <= 1'b1;
-                    psel     <= 1'b1;
-                    penable  <= 1'b0;
-                    state    <= S_RSACC;
+                    penable <= 1'b0;
+                    if (end_of_data) begin
+                        // Normal segment completion must not cause LOAD timeout.
+                        pwrite <= 1'b0;
+                        psel <= 1'b0;
+                        state <= S_IDLE;
+                    end else begin
+                        paddr    <= A_CTRL;
+                        pwdata   <= D_ENS;
+                        pwrite   <= 1'b1;
+                        psel     <= 1'b1;
+                        state    <= S_RSACC;
+                    end
                 end
 
                 S_RSACC: begin
                     penable <= 1'b1;                     // ACCESS of restart
-                    if (pready) begin
+                    if (penable && pready) begin
                         penable <= 1'b0;
                         pwrite  <= 1'b0;
                         psel    <= 1'b0;
