@@ -55,6 +55,7 @@ module feature_extraction #(
     reg signed [63:0] sum_square;
     reg signed [7:0] peak_reg;
     reg signed [7:0] min_reg;
+    reg [7:0] abs_peak_reg; // unsigned: abs(-128)=128 is representable
 
     reg [15:0] zc_cnt;
     reg prev_sign;
@@ -65,8 +66,8 @@ module feature_extraction #(
     reg [15:0] rr_previous;
     reg [7:0] sample_delayed;
 
-    reg [31:0] sq_in;       // sqrt radicand = mean_square << 16 (32-bit)
-    reg [15:0] sq_rem;      // sqrt remainder (< 4*root+3, 16 bits for 16-bit root)
+    reg [31:0] sq_in;       // unsigned S2<<7; max 2^30, needs 31 bits
+    reg [15:0] sq_rem;      // <=65534 for radicand <=2^30
     reg [15:0] sq_root;      // sqrt result Q8.8 (0..32768), internal RMS
     reg [4:0]  sq_cnt;       // sqrt iteration count (2 bits/iter, 16 iters)
     reg [15:0] rms_reg;      // = sq_root, the internal Q8.8 RMS used as crest divisor
@@ -77,12 +78,14 @@ module feature_extraction #(
     reg [16:0] div_rem;
     reg [5:0] div_cnt;
 
-    wire [7:0] mag_peak =
-        peak_reg[7] ? (8'd0 - peak_reg) : peak_reg;
-
-    // mean_square = sum_square / 512 (512 samples).
-    // Bound: sum_square <= 512 * 128^2 = 8,388,608 -> mean_sq <= 16384.
-    wire [15:0] mean_sq = sum_square[24:9];
+    // Widen before negation; never interpret abs(-128) as a signed byte.
+    wire signed [8:0] sample_extended = {sample_in[7], sample_in};
+    wire [8:0] sample_magnitude = sample_extended < 0 ?
+                                  -sample_extended : sample_extended;
+    // S2 <= 512*128^2 = 2^23, hence Q8.8 RMS radicand <=2^30.
+    wire [31:0] rms_radicand = {1'b0, sum_square[23:0], 7'd0};
+    wire energy_invalid = (sum_square < 64'sd0) ||
+                          (sum_square > 64'sd8388608);
 
     // f_var (G2): population variance, always >= 0 by Cauchy-Schwarz
     // ((512*sum_sq) >= sum^2).  var = (512*sum_sq - sum^2) / 512^2
@@ -93,16 +96,20 @@ module feature_extraction #(
     wire signed [63:0] sum_sq64 = $signed({{32{sum[31]}}, sum});
     wire signed [63:0] var_num =
         ($signed(sum_square) <<< 9) - (sum_sq64 * sum_sq64);
+    // Positive numerator >=2^33 would produce floor(var)>32767.
+    // Legal int8 windows have var_num<=4261478400 and never saturate.
+    wire variance_invalid = var_num[63] || (|var_num[62:33]);
 
     // Digit-by-step square root (restoring), 2 radicand bits per cycle.
-    // Operates on a 32-bit radicand (sq_in = mean_square << 16) -> 16-bit
+    // Operates on a 32-bit radicand (sq_in = sum_square << 7) -> 16-bit
     // root in Q8.8. 16 iterations; each feeds the next 2 bits of sq_in.
     // Invariant: sq_root = floor(sqrt(prefix));  candidate remainder
     // (sq_rem*4 | top2) vs trial (sq_root*4 | 1). Verifies isqrt() exactly.
     wire [1:0]  sq_top   = sq_in[31:30];
-    wire [19:0] sq_cand  = {sq_rem, sq_top};
-    wire [19:0] sq_trial = {sq_root, 2'd1};
+    wire [17:0] sq_cand  = {sq_rem, sq_top};
+    wire [17:0] sq_trial = {sq_root, 2'd1};
     wire        sq_acc    = sq_cand >= sq_trial;
+    wire [17:0] sq_next_rem = sq_acc ? sq_cand - sq_trial : sq_cand;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -116,6 +123,7 @@ module feature_extraction #(
             sum_square     <= 64'd0;
             peak_reg       <= -8'sd128;
             min_reg        <= 8'sd127;
+            abs_peak_reg   <= 8'd0;
             zc_cnt         <= 16'd0;
             pos_cnt        <= 16'd0;
             prev_sign      <= 1'b0;
@@ -159,6 +167,8 @@ module feature_extraction #(
             sum            <= 32'd0;
             sum_square     <= 64'd0;
 
+            abs_peak_reg   <= 8'd0;
+
             rr_timer       <= 16'd0;
             rr_current     <= 16'd0;
             rr_previous    <= 16'd0;
@@ -189,6 +199,7 @@ module feature_extraction #(
                         sum_square     <= 64'd0;
                         peak_reg       <= -8'sd128;
                         min_reg        <= 8'sd127;
+                        abs_peak_reg   <= 8'd0;
                         zc_cnt         <= 16'd0;
                         pos_cnt        <= 16'd0;
                         prev_sign      <= 1'b0;
@@ -229,6 +240,9 @@ module feature_extraction #(
 
                     if ($signed(sample_in) < min_reg)
                         min_reg <= $signed(sample_in);
+
+                    if (sample_magnitude > {1'b0, abs_peak_reg})
+                        abs_peak_reg <= sample_magnitude[7:0];
 
                     if (sample_cnt > 10'd0) begin
                         if (prev_sign ^ sample_in[7])
@@ -277,17 +291,21 @@ module feature_extraction #(
                 end
 
                 // f_var = (512*sum_sq - sum^2) >> 18  (population variance,
-                // always >= 0). var_num < 2^32 so [33:18] is the exact value.
+                // always >= 0 for legal input). Guard before signed16 narrowing.
                 S_CALC_VAR: begin
-                    f_var <= $signed(var_num[33:18]);
+                    if (var_num[63])
+                        f_var <= 16'sd0; // invalid negative numerator: overflow flagged
+                    else if (|var_num[62:33])
+                        f_var <= 16'sd32767;
+                    else
+                        f_var <= $signed({1'b0, var_num[32:18]});
                     state <= S_CALC_RMS;
                 end
 
-                // Start the square root of mean_square. Operate on a 32-bit
-                // radicand (mean_square << 16) so the root is the RMS in
-                // Q8.8 (internal fixed-point precision), 16 iterations.
+                // Q8.8 RMS = isqrt(S2*65536/512) = isqrt(S2<<7).
+                // Preserve fractional mean-square; no division before sqrt.
                 S_CALC_RMS: begin
-                    sq_in   <= {mean_sq, 16'd0};
+                    sq_in   <= rms_radicand;
                     sq_rem  <= 16'd0;
                     sq_root <= 16'd0;
                     sq_cnt  <= 5'd0;
@@ -305,7 +323,7 @@ module feature_extraction #(
                         f_rms    <= $signed({8'd0, sq_root[15:8]});
                         state    <= S_DIV_CREST;
                     end else begin
-                        sq_rem  <= sq_acc ? (sq_cand - sq_trial) : sq_cand;
+                        sq_rem  <= sq_next_rem[15:0]; // exact for radicand<=2^30
                         sq_root <= sq_acc ? {sq_root[14:0], 1'b1}
                                          : {sq_root[14:0], 1'b0};
                         sq_in   <= sq_in << 2;
@@ -313,13 +331,11 @@ module feature_extraction #(
                     end
                 end
 
-                // Crest factor = |peak| / rms, using the INTERNAL Q8.8 rms
-                // (rms_reg) as the divisor -- NOT the integer f_rms, which is
-                // rounded and would inject truncation error. Numerator
-                // mag_peak << 16; the quotient is the crest factor in Q8
-                // (ratio * 256). int16-safe: max ratio 127 (rms_fp>=256)
-                // -> 127*256 = 32512 < 32768.
-                               S_DIV_CREST: begin
+                // Nonnegative absolute crest, F=8 in signed16 storage.
+                // A=max(abs(x)); quotient=floor(A*65536/rms_reg), zero ->0.
+                // For legal windows A<=128 and quotient<=5957. Check ALL
+                // quotient bits before narrowing, including defensive saturation.
+                S_DIV_CREST: begin
                     if (div_cnt == 6'd0) begin
                         if (rms_reg == 16'd0) begin
                             f_crest <= 16'd0;
@@ -327,7 +343,7 @@ module feature_extraction #(
                             state   <= S_DIV_RR;
                         end else begin
                             div_divisor  <= rms_reg;
-                            div_dividend <= {4'd0, mag_peak, 16'd0};
+                            div_dividend <= {4'd0, abs_peak_reg, 16'd0};
                             div_quot     <= 28'd0;
                             div_rem      <= 17'd0;
                             div_cnt      <= 6'd1;
@@ -351,10 +367,8 @@ module feature_extraction #(
 
                         div_cnt <= div_cnt + 6'd1;
                     end else begin
-                        f_crest <=
-                            $signed(peak_reg) < 0
-                            ? -$signed(div_quot[15:0])
-                            :  $signed(div_quot[15:0]);
+                        f_crest <= (div_quot > 28'd32767) ? 16'sd32767 :
+                                   $signed({1'b0, div_quot[14:0]});
 
                         state   <= S_DIV_RR;
                         div_cnt <= 6'd0;
@@ -410,11 +424,14 @@ module feature_extraction #(
     end
 
     always @(posedge clk or negedge rst_n) begin
-        if (!rst_n)
+        if (!rst_n || soft_reset)
             overflow <= 1'b0;
-        else
-            overflow <= (sum_square[63:62] != 2'b00)
-                        ? 1'b1 : 1'b0;
+        else if (state == S_IDLE && start_compute)
+            overflow <= 1'b0;
+        else if (energy_invalid ||
+                 (state == S_CALC_VAR && variance_invalid) ||
+                 (state == S_DIV_CREST && div_cnt > 6'd28 && div_quot > 28'd32767))
+            overflow <= 1'b1; // retain fault through feature_valid/packet latch
     end
 
 endmodule

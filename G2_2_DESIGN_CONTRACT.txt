@@ -1,0 +1,94 @@
+G2.2 NUMERICAL CONTRACT — written after source audit, before RTL edits
+2026-11-10; branch improve/g2-feature-extraction
+Baseline HEAD a6d604f692e07a7bec87cbcc417efc01cd40f29d
+Snapshot: sim/g22_results/checkpoint_before/manifest.json (215 files).
+
+Scope: signed int8, N=512, stride256. Preserve preprocessing, ZC, RR, G1
+control/APB/UART, feature order, weights and 33-byte packets. No G2.3 work.
+
+Confirmed arithmetic errors:
+1. RMS currently computes isqrt(floor(S2/512)*65536), losing fractional
+   energy before sqrt. A single amplitude1 or2 impulse has internal RMS=0.
+2. Crest uses abs(max(x)), then restores the sign of max(x). This misses a
+   dominant negative peak and returns negative crest on all-negative windows.
+3. Current variance equation is ALREADY mathematically correct and wide
+   enough for legal int8 input. No legal-input variance overflow is claimed.
+   Its unchecked narrowing/negative-result handling will be made explicit.
+
+New equations and external formats (all ports retain signed16 storage):
+  S1=sum(x_i), S2=sum(x_i*x_i), A=max(abs(x_i)).
+  R=isqrt(S2*128) = floor(256*sqrt(S2/512)), unsigned Q8.8 internally.
+  f_rms=R>>8, nonnegative integer/F=0 code units, range0..128.
+  Vnum=512*S2-S1*S1, f_var=floor(Vnum/262144), F=0 codes squared.
+  f_crest=floor((A*65536)/R), F=8, nonnegative; R=0 -> f_crest=0.
+  Thus f_rms may still be zero for a tiny nonzero signal; R and crest retain
+  fractional information. Keeping f_rms F=0 avoids an uncoordinated scale change.
+  f_var and f_crest saturate at signed16 maximum32767, never wrap negative.
+  Negative Vnum returns0 and raises overflow; saturation also raises overflow.
+  Overflow is sticky for the current window and clears on hard/soft reset or
+  accepted start of a new window. Invalid accumulated energy also raises it.
+
+Quantization: input already int8; all new operations use exact integer math,
+isqrt and floor division. No rounding-to-nearest. A zero signal uses crest0
+by convention. Using a floored Q8.8 denominator slightly overestimates crest:
+a unit impulse gives R=11 and crest=5957 (23.26953125), versus ideal sqrt(512).
+This is the explicitly requested equation, not an exact real-valued quotient.
+
+Width analysis (minimum required width versus retained RTL width):
+  sample x: signed8 [-128,127].
+  signed extension before abs: signed9 [-128,127]; abs in unsigned9 [0,128].
+  tracked absolute peak: unsigned8 [0,128] (0x80 is positive128).
+  sample square: [0,16384], needs unsigned15; existing signed64 product kept.
+  S1: [-65536,65024], needs signed17; existing signed32 accumulator kept.
+  S2: [0,512*128^2]=[0,8388608]=[0,2^23], needs unsigned24;
+      existing signed64 accumulator retained to minimize architectural change.
+  S1*S1 and 512*S2: each [0,2^32], unsigned33 or signed34 minimum;
+      both remain signed64, with S1 explicitly sign-extended before multiply.
+  Vnum: [0,4261478400], fits unsigned32; signed64 subtraction retained.
+      Max population variance =255^2/4=16256.25; output floor<=16256.
+  radicand S2<<7: [0,2^30], unsigned31 minimum, stored unsigned32.
+      Explicit {1'b0,S2[23:0],7'b0} prevents expression-sizing loss.
+  root R: [0,32768], unsigned16 (must not interpret 0x8000 as signed).
+  sqrt remainder: <=65534 over radicand0..2^30; unsigned16 is sufficient.
+  sqrt candidate/trial: unsigned18, derived from remainder/root and two bits.
+      Explicit low16 writeback is valid under the proven radicand bound.
+  crest numerator: <=128*65536=8388608, unsigned24; existing divider28 kept.
+  divider divisor: unsigned16, crest11..32768 for nonzero legal input.
+  divider remainder: unsigned17; prior remainder<divisor, shifted candidate
+      fits17. Quotient stored unsigned28 and FULL quotient checked before narrowing.
+  For a peak A>=1, S2>=A*A, so crest<=max(A*65536/isqrt(128*A*A))=5957
+      over integer A=1..128. Saturation is unreachable for legal windows;
+      directed fault injection will exercise its defensive behavior separately.
+
+Retain existing restoring sqrt (16 iterations, two input bits/iteration) and
+28-step restoring divider. No combinational divide or sqrt is introduced.
+Track abs_peak only in the existing sample-consumption state; include the last
+sample and reset it on both resets and each accepted start.
+Sqrt uses16 work cycles +1 result cycle. Nonzero crest uses1 init+28 work+1
+result cycles; zero crest uses1 guard cycle. RR divider remains unchanged.
+From accepted start to feature_valid: 1536 accumulation cycles +3 base/var/
+radicand cycles +17 sqrt cycles +crest(1 or30) +RR(1 or30) +1 done cycle:
+1559,1588 or1617 cycles. Tests check exact latency and iteration counts.
+
+Other feature equations/formats stay as G2.1: peak/max signed maximum; ZC
+adjacent sign changes with zero nonnegative; half_ratio F=12; RR compatibility
+diagnostics F=0 except ratio F=12. RR validity remains unavailable/physiologically
+invalid. Overflow flag is arithmetic status, not RR validity.
+
+Verification strategy:
+- Run unchanged G1 and G2.1 suites on the baseline before editing.
+- Preserve old references, vectors, testbench files and implementation artifacts.
+- New independent Python math uses sum, abs, isqrt and integer division only.
+  New golden directories g22_signed and g22_legacy; all bytes strict.
+- Reuse G1/G2.1 test assertions on new RTL via generated testbench copies:
+  change ONLY golden locations or numerical expectation literals, independently
+  regenerated for corrected math. Record adaptations and original hashes.
+- Add all constants, signed impulses, asymmetric/extreme/negative/random cases;
+  check internal R, energy, numerator, abs peak, sqrt/remainder invariants,
+  full divider quotient, exact valid latency, overlapping windows and reset
+  during sqrt and both division phases. Fault tests are labeled nonphysical.
+- Prove the old RTL fails new arithmetic assertions before applying the fix.
+- Run Gowin in a new isolated directory after functional PASS, 20ns SDC;
+  preserve G2.1 reports and compare area/Fmax/WNS/TNS/critical path.
+- No hardware claims. Existing trained preprocessing/features are incompatible
+  with corrected crest/RMS numerics even though transport widths stay unchanged.

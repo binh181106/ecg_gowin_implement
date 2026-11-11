@@ -1,0 +1,295 @@
+BÁO CÁO G2.2 — FIXED-POINT ARITHMETIC CORRECTION & VERIFICATION
+Hoàn tất: 2026-11-11, Asia/Saigon
+Branch: improve/g2-feature-extraction
+HEAD giữ nguyên: a6d604f692e07a7bec87cbcc417efc01cd40f29d
+
+KẾT QUẢ: PASS 21/21 nhóm regression trên RTL G2.2 hiện tại. Gowin synthesis,
+P&R và STA PASS tại constraint 50 MHz. Hardware NOT RUN vì không có board.
+Dừng tại G2.2; không triển khai G2.3, không commit/push/đổi branch.
+
+1. Audit, checkpoint và root cause
+
+Đã đọc feature_extraction.v, window_buffer.v, top_ecg_rom_demo.v,
+g21_reference.py, golden_model.py, các testbench/runner G1/G2/G2.1 trước sửa.
+G2_2_DESIGN_CONTRACT.txt được ghi trước khi sửa RTL. Phiên tiếp tục đã đọc
+lại contract, diff, testbench mới và trạng thái Git; giữ toàn bộ công việc cũ.
+
+Baseline trước sửa G2.2 đã chạy lại G1 12/12 và G2.1 8/8 PASS. HEAD ở giai
+đoạn này đã là commit G2.1 a6d604f, khác HEAD G1 trong báo cáo G2.1 cũ.
+
+Nguyên nhân xác nhận trong feature_extraction.v trước sửa:
+- Dòng 83–85 và 287–289: mean_sq=sum_square[24:9], rồi sqrt(mean_sq<<16).
+  Phần lẻ S2/512 bị loại trước sqrt; xung đơn biên độ1 hoặc2 cho RMS nội bộ0.
+- Dòng 80–81, 330, 354–357: chỉ lấy abs(peak_reg), sau đó gắn lại dấu của
+  signed maximum. Bỏ sót đỉnh âm trội; tín hiệu hằng âm cho crest âm.
+- Dòng 93–95 đã tính variance bằng signed64 đúng với miền int8/512 mẫu.
+  Không phát hiện overflow variance trên input hợp lệ. Dòng 282 trước đây
+  cắt trực tiếp var_num[33:18], chưa có guard âm/saturation tường minh.
+- Dòng 413–417: overflow chỉ nhìn hai bit cao của energy và không giữ lỗi
+  đến lúc kết quả được tiêu thụ. Bổ sung trạng thái lỗi số học theo contract.
+
+Test mới chạy trên RTL cũ đã FAIL đúng lỗi: case hằng -10, f_crest=-256,
+expected=+256. Log giữ tại sim/g22_results/old_math_reproduction/new_arithmetic.log.
+Đây là bằng chứng tái hiện lỗi, không được tính là regression PASS.
+
+2. Công thức trước/sau và quy tắc lượng tử hóa
+
+N=512; S1=sum(x_i); S2=sum(x_i*x_i); p=max(x_i); A=max(abs(x_i)).
+
+Đại lượng       Trước G2.2                         Sau G2.2
+RMS nội bộ R    isqrt(floor(S2/512)*65536)          isqrt(S2*128)
+f_rms           R>>8                               R>>8, giữ F=0
+Variance Vnum   512*S2-S1*S1                       Giữ công thức signed64
+f_var           cắt var_num[33:18]                 floor(Vnum/262144), guard/saturate
+Crest           sign(p)*floor(abs(p)*65536/R)       floor(A*65536/R), không âm
+
+R là UNSIGNED Q8.8. f_rms vẫn là phần nguyên, F=0, không đổi scale cổng.
+f_var F=0, đơn vị code^2. f_crest lưu signed16 nhưng giá trị không âm, F=8
+(giá trị thực = mã/256). R=0 quy ước crest=0. Tất cả dùng floor, không round
+to nearest. Đầu vào vẫn code int8 từ preprocessing G2.1, không đổi sang mV.
+
+f_var âm do dữ liệu/trạng thái không hợp lệ trả0 và bật overflow. Nếu kết quả
+variance hoặc toàn bộ quotient crest vượt32767, trả32767 và bật overflow.
+Energy âm hoặc lớn hơn8388608 cũng bật overflow. Cờ lỗi giữ đến hard reset,
+soft reset hoặc start mới được nhận trong IDLE. Output valid vẫn đi cùng cờ
+lỗi; không trình bày một variance âm/wrapped như số hợp lệ.
+
+Chín feature còn lại giữ nguyên định nghĩa/thứ tự. Cổng vẫn 12 x signed16,
+f_half_ratio/f_rr_ratio vẫn F=12, UART vẫn 33 byte. RR/ZC không đổi.
+
+Ví dụ đối chiếu độc lập; crest là mã Q8.8:
+Tín hiệu                    R mới   f_rms  f_var    Crest cũ -> mới
+Zero                            0      0      0           0 -> 0
+Hằng +10                     2560     10      0         256 -> 256
+Hằng -10                     2560     10      0        -256 -> 256
+Một xung +1                    11      0      0           0 -> 5957
+Một xung +2                    22      0      0           0 -> 5957
+Một xung +100                1131      4     19        5877 -> 5794
+Xen kẽ -128/+127            32640    127  16256         255 -> 257
+Một -120, còn lại +10        2895     11     32         227 -> 2716
+Hằng -128                   32768    128      0        -256 -> 256
+
+f_rms=0 cho xung nhỏ là chủ đích giữ F=0; R và crest đã giữ thông tin phần lẻ.
+Do R bị floor ở Q8.8, crest của xung1 là5957/256=23.26953125, lớn hơn crest
+thực sqrt(512). Đây là sai số lượng tử của công thức đã duyệt, không phải
+cam kết tính crest số thực chính xác tuyệt đối.
+
+3. Width, signedness, bounds và latency
+
+Tín hiệu/biểu thức         Kiểu RTL           Miền cần bảo đảm
+sample                    signed8 theo code  [-128,127]
+sample_extended           signed9            [-128,127], mở rộng trước abs
+sample_magnitude          unsigned9          [0,128]
+abs_peak_reg              unsigned8          [0,128], gồm abs(-128)=128
+peak_reg/min_reg          signed8            [-128,127]
+sum (S1)                  signed32           [-65536,65024], signed17 đủ
+sample square             signed64 product   [0,16384]
+sum_square (S2)           signed64           [0,8388608]=[0,2^23], unsigned24 đủ
+512*S2, S1*S1             signed64           mỗi hạng <=2^32; signed34 tối thiểu
+var_num                   signed64           [0,4261478400] trên input hợp lệ
+rms_radicand, sq_in       unsigned32         [0,2^30], cần31 bit
+sq_root, rms_reg          unsigned16         [0,32768]; 0x8000 là +32768
+sq_rem                    unsigned16         <=65534 trong miền radicand này
+sq_cand/sq_trial/next_rem  unsigned18         đủ remainder<<2 và trial
+sq_top                    unsigned2          [0,3]
+sq_cnt                    unsigned5          [0,16]
+div_dividend/div_quot      unsigned28         crest numerator<=8388608
+div_divisor               unsigned16         crest11..32768 nếu R khác0
+div_rem                   unsigned17         remainder<divisor; shifted fits17
+div_cnt                   unsigned6          [0,29]
+sample_cnt                unsigned10         [0,511]
+zc_cnt/pos_cnt            unsigned16         [0,511] / [0,512]
+rr_timer/current/previous unsigned16         <=512 trong cửa sổ; thuật toán cũ
+state                     unsigned4          giữ các trạng thái cũ
+
+Population variance tối đa =255^2/4=16256.25, f_var<=16256. Với A>=1,
+S2>=A*A nên crest<=max_{A=1..128}(A*65536/isqrt(A*A*128))=5957. Python kiểm
+đủ128 mức A. Saturation signed16 không thể xảy ra ở cửa sổ int8 hợp lệ;
+test saturation dùng fault injection được ghi rõ là trạng thái không vật lý.
+
+Giữ kiến trúc tuần tự: sqrt16 vòng +1 cycle lấy kết quả; crest divider
+1 init+28 vòng+1 cycle kết quả, hoặc1 cycle guard khi zero. Không thêm
+combinational divide/sqrt. Full quotient28 được kiểm trước khi thu hẹp.
+Độ trễ accepted start -> feature_valid được kiểm chính xác: 1559/1588/1617
+cycles tùy nhánh zero/division RR, tối đa32.34 us tại50 MHz. feature_valid
+một cycle; không đổi đường đọc RAM hoặc timing sample acceptance.
+
+4. File thay đổi và mục đích
+
+Chỉ một file RTL sửa trong G2.2: src/feature_extraction.v.
+- :58,82,126,170,202,244 — absolute peak đủ rộng, reset và cập nhật từng mẫu.
+- :86,307 — radicand S2<<7 không mất phần lẻ trước sqrt.
+- :97,101,295 — giữ variance signed64, guard âm/saturation trước narrowing.
+- :109,112,326 — width sqrt tường minh; writeback16 có bound và invariant test.
+- :338,346,370 — absolute crest không âm, kiểm toàn quotient28.
+- :426 — overflow giữ lỗi số học đến kết quả, clear đúng reset/start.
+
+File mới:
+- G2_2_DESIGN_CONTRACT.txt: contract toán học trước khi sửa.
+- src/g22_reference.py:22,39,47 — arithmetic độc lập dùng Python integer,
+  sum/abs/math.isqrt/integer division; tái sử dụng chỉ preprocessing, công thức
+  feature không đổi và serialization G2.1, không sao chép sqrt/divider RTL.
+- src/golden/g22_signed/expected_packets.{json,sv} và g22_legacy/...:
+  golden riêng, mode/equations/provenance rõ ràng, strict_mask toàn1.
+- sim/gen_g22_vectors.py:17,46 —313 cửa sổ, histogram identity cho variance,
+  mọi constant int8, proof bound crest và dữ liệu tương thích test G2.1.
+- sim/tb_g22_arithmetic.sv:2 — mẫu tiêu thụ, energy/sum/varnum/abs peak,
+  invariant mỗi vòng sqrt, remainder/divider quotient, latency và valid.
+- sim/tb_g22_reset_faults.sv:2 —reset trong sqrt/crest/RR division, recovery,
+  saturation, negative numerator, high quotient bits và invalid energy.
+- sim/run_g22.py:51,97 —regression trên RTL hiện tại, tạo bản sao testbench
+  với expected G2.2; lưu adaptation.patch và source hashes.
+- sim/run_g22_gowin.py:19 —build riêng, chỉ chạy khi21 nhóm PASS và source
+  hash đúng bản đã kiểm. Từ chối ghi đè build cũ.
+- sim/g22_vectors/.gitignore và sim/g22_results/.gitignore: loại vector tái
+  tạo được, work library, checkpoint và build database khỏi source diff.
+
+Không sửa window_buffer, top, Control FSM, APB, UART, RR/ZC, ROM, weights,
+g21_reference.py, golden_model.py hoặc source testbench/runner G1/G2.1.
+Những diff G1/decoder có sẵn trong working tree được giữ nguyên, không phải
+thay đổi mới của phiên G2.2. So sánh block RR detection/division và ZC với
+checkpoint xác nhận nội dung không đổi.
+
+5. Python/Questa: kết quả thực tế
+
+Baseline trước sửa (source G2.1):
+- G1: 12/12 PASS, sim/g22_results/g1_before/summary.txt.
+- G2.1: 8/8 PASS, sim/g22_results/g21_before/summary.txt.
+- Arithmetic test mới trên RTL cũ: expected FAIL, crest âm, log giữ nguyên.
+
+Sau sửa, Questa2024.1 và Python: 21/21 PASS; final/summary.txt:
+  Python: python_preprocess, python_arithmetic, python_golden,
+          decoder_selftest, decoder_captures —5/5 PASS.
+  G1/G2 SV: control, start_accept, apb, seq, class_uart, rom_uart,
+            rom_uart_injected, reset, g2_rom, g2_checkpoint —10/10 PASS.
+  G2.1 SV: g21_preprocess, g21_vectors_g22_math, signed_uart,
+            signed_uart_injected —4/4 PASS.
+  G2.2 SV: arithmetic, reset_faults —2/2 PASS.
+
+Phân biệt numerical change và regression:
+- Testbench gốc/golden cũ không bị sửa. run_g22 tạo bản sao, chỉ đổi golden
+  include, feature-vector path và các literal expected tính từ Python mới.
+  Assertion, stimulus và handshake checks được giữ. adaptation.patch cho
+  phép review toàn bộ thay đổi expected; không mask byte hoặc bỏ assertion.
+- G1 vẫn chạy mode preprocessing legacy, nhưng số học mới; G2.1 full path
+  vẫn chạy preprocessing signed và số học mới. Hai mode có golden riêng.
+- Các runner cũ còn dùng golden toán học cũ. Chạy trực tiếp chúng trên RTL
+  mới có thể báo numerical mismatch; không tuyên bố các giá trị crest cũ
+  vẫn đúng. Dùng run_g22.py để kiểm invariant cũ với contract G2.2.
+
+Coverage và số kiểm tra:
+- 66048 preprocessing invariants Python, gồm mọi cặp raw/ADC zero256x256.
+- 313 cửa sổ số học; tất cả256 constant, xung ±1/±2/±100/-128/+127 ở đầu,
+  giữa, cuối; alternating extremes; all-negative; extrema bất đối xứng;
+  noninteger RMS; zero crossing qua zero; 24 random với seed cố định.
+- Mỗi cửa sổ kiểm độc lập Vnum qua histogram identity
+  sum_{i<j}(xi-xj)^2 = 512*S2-S1*S1; chín feature không đổi phải khớp G2.1.
+- Arithmetic SV:196759 checks PASS; 3756 output feature comparisons,
+  313 cửa sổ liên tiếp không reset; internal root, abs peak, exact quotient,
+  sqrt/division invariants, số vòng và latency đều PASS.
+- Reset/fault SV:273 checks PASS; reset trong3 pha sqrt/crest/RR division;
+  9 ca defensive (gồm sát biên không bão hòa), 18 completions/recoveries.
+  Sau reset không có valid cũ; start mới clear lỗi và cả12 feature đúng.
+- G2.1 preprocessing SV:11595 checks, sáu cấu hình, mọi256 raw code và
+  hai cửa sổ RAM overlap. Directed G2.1 signed vectors:16 ca vẫn PASS khi
+  expected được tính bằng contract G2.2. G2 corners cũ:131 checks PASS;
+  ROM feature test cũ:91 checks PASS với corrected expected.
+- Full chain ROM->ADC->RAM->feature->MLP->UART:2048 mẫu đúng thứ tự,
+  3584 lượt tiêu thụ qua7 cửa sổ512/stride256, 231/231 byte đúng. Kiểm cả
+  legacy và signed, cả class0 bình thường và injection classes0,1,2,3,0,1,2.
+- Decoder kiểm đủ byte, framing, checksum; từ chối golden cũ và feature
+  bị sửa dù checksum hợp lệ. Không đổi weights để tạo kết quả PASS.
+
+Compile:0 errors,0 warnings. Các full-chain SV có4 warnings part-select
+trong primitive SDPB Gowin cho nhánh width không dùng; không suppress chúng.
+Simulation full chain dùng clock50 MHz, sample20 kHz để tăng tốc (2500 cycles
+mỗi mẫu, lớn hơn1617); synthesis board giữ360 Hz. Full capture ở360 Hz và
+board/ADC thực: NOT RUN. Không suy ra classification accuracy từ placeholder.
+
+6. Gowin synthesis, P&R, STA
+
+PASS, exit0: Gowin V1.9.12.01, GW5A-LV25UG324C2/I1, versionA.
+Build actual current RTL tại sim/g22_results/gowin_build/. SHA256 của tất cả
+source đã test, source đã synthesize và provenance golden khớp workspace.
+Constraint giữ nguyên src/ecg_board.sdc: sys_clk period20.000 ns; report STA
+xác nhận50.000 MHz. global_freq100 là option tối ưu đã có ở G2.1, không thay
+thế constraint20 ns. Không sửa SDC để đạt timing.
+
+Chỉ tiêu                    G2.1         G2.2           Delta
+LUT                          1440         1511            +71
+ALU                           713          771            +58
+Logic tổng                   2153         2282           +129
+FF tổng                      1116         1142            +26
+  Logic FF / I/O FF        1113 / 3     1139 / 3          +26/0
+BRAM                            2            2              0
+DSP (đơn vị Gowin)             4.5          4.5              0
+Fmax MHz                   89.927       84.031         -5.896
+Setup WNS ns               +8.880       +8.100         -0.780
+Hold WNS ns                +0.275       +0.203         -0.072
+Setup / Hold TNS ns         0 / 0        0 / 0              0
+Setup / Hold vi phạm        0 / 0        0 / 0              0
+
+BRAM:1 SDPB+1 pROM; DSP:1 MULT12X12+2 MULT27X36, không tăng DSP.
+Chi phí logic/FF tăng khi giữ thêm bit phần lẻ, absolute peak và guard lỗi.
+Giữ accumulator64 và kiến trúc sqrt/divider tuần tự; không mở rộng scope
+để tối ưu lại datapath. Tài nguyên tổng vẫn10% logic,5% register trên chip.
+
+Critical setup vẫn ở đường RAM->square/energy accumulator, logic depth11:
+G2.1: SDPB DO[0] -> u_demo/u_feature/sum_square_62_s1/D.
+G2.2: SDPB DO[6] -> u_demo/u_feature/sum_square_63_s1/D.
+Data arrival13.656 ->14.454 ns. Critical hold mới:
+u_demo/u_window/write_ptr_0_s3/Q -> SDPB ADA[3], slack+0.203 ns.
+Đạt target50 MHz, WNS setup/hold>=0 và TNS=0 dù Fmax giảm so với G2.1.
+
+EX3791 về thu hẹp sqrt20->16 của baseline không còn sau khai báo width tường
+minh. Warning CV0016 key0_n unused vẫn có như baseline. Console có thông báo
+không mở được cache sh.log ngoài workspace; synth/P&R/bitstream/report trong
+build riêng vẫn hoàn tất exit0. Không cần thay permission hoặc bỏ qua lỗi RTL.
+Evidence: gowin_build/console.log, exit.txt, impl/gwsynthesis và impl/pnr;
+implementation_comparison.txt trích tài nguyên và STA hai phiên bản.
+
+7. Bảo toàn workspace và git diff
+
+215/215 tệp checkpoint trước G2.2 khớp SHA256; 87/87 tệp snapshot khi resume
+cũng khớp bản sao. Hai file metadata project đã thay đổi giữa hai phiên
+(Bao_rom.gprj.user, impl/Bao_rom_process_config.json) được giữ nguyên theo
+snapshot resume; không khôi phục đè. Các artifact gốc impl/ không phải output
+của build mới. Golden/vector/test nguồn G1/G2.1 vẫn khớp checkpoint.
+
+git diff --stat -- src/feature_extraction.v:
+  1 file changed, 52 insertions(+), 35 deletions(-).
+git diff --stat -- src sim:
+  6 files changed, 75 insertions(+), 48 deletions(-).
+git diff --stat toàn repo:
+  28 files changed, 45040 insertions(+), 38701 deletions(-).
+Hai số sau bao gồm diff đã có trước G2.2. git diff không đếm file mới untracked.
+
+git diff --check -- src sim: PASS, exit0.
+Kiểm whitespace từng file source/reference/golden/report G2.2 mới: PASS.
+git diff --check toàn repo: FAIL, exit2,1850 trailing-whitespace findings trong
+impl/gwsynthesis/Bao_rom.vg và impl/pnr/Bao_rom.rpt.txt. Hash hai file này
+khớp snapshot trước resume; giữ nguyên artifact, không dọn để làm PASS giả.
+Log: source_stat.txt/global_stat.txt/source_check.txt/global_check.txt.
+
+8. Giới hạn còn lại và cách tái chạy
+
+- RR detector unsigned, per-window reset/off-by-one và thiếu validity vẫn là
+  vấn đề của G2.3. rr_physiologically_valid=false trong golden; UART flag
+  overflow không thay cho physiological validity. Chưa bắt đầu G2.3.
+- ROM signed midpoint vẫn là code units, chưa được hiệu chuẩn baseline/gain.
+- f_rms vẫn F=0; internal R Q8.8 và crest còn sai số floor đã mô tả rõ.
+- Không cam kết NUM_SAMPLES/DATA_WIDTH tùy ý: đã xác minh int8,N512,stride256.
+- Model huấn luyện theo preprocessing hoặc feature G1/G2.1 cần đánh giá lại/
+  chuẩn hóa/huấn luyện lại với G2.2. Placeholder weights giữ nguyên.
+- Transport không ghi version arithmetic/preprocessing; cần chọn golden đúng.
+- STA theo clock constraint hiện có; không có kiểm chứng board hoặc ADC thực.
+
+Từ repo root:
+  python -I sim/run_g22.py
+  python -I src/g22_reference.py --check
+  python -I src/uart_decode.py --check sim/g22_results/final/uart_signed.bin --golden src/golden/g22_signed/expected_packets.json
+  python -I sim/run_g22_gowin.py --out sim/g22_results/gowin_recheck
+
+Golden chỉ tái sinh có chủ đích bằng python -I src/g22_reference.py; runner
+không tự thay golden để PASS. --out của build phải là thư mục mới. Muốn giữ
+log simulation hiện tại, dùng run_g22.py --out sim/g22_results/recheck.

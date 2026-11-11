@@ -1,0 +1,8 @@
+checkpoint_before/
+resume_before/
+**/work/
+**/*.wlf
+**/*modelsim.ini
+**/run.do
+gowin_*/
+**/adapted/
