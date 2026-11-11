@@ -1,0 +1,129 @@
+G2.3 DESIGN CONTRACT -- 2026-11-11, written BEFORE RTL modification
+Branch improve/g2-feature-extraction, HEAD 183428524651d2e9c67eb28ede1a2e311cb75212
+Pre-edit evidence: sim/g23_results/checkpoint_before (100 preserved files).
+
+AUDIT / CONFIRMED BUGS
+Current ZC counts adjacent sign-bit changes, zero assigned positive. Thus
+-1,0,-1 counts twice; -1,0,+1 counts once. This was a defined G2.1 behavior,
+not an unsigned arithmetic defect; this phase deliberately changes its policy.
+RR tests unsigned delayed_byte > threshold[7:0] and current_byte <= threshold.
+Negative signed ECG bytes can therefore masquerade as positive threshold peaks.
+rr_timer/current/previous reset at every feature start, and advance during RAM
+reads, including the repeated 256 samples in each overlapped window. First
+event is a distance from window start, not an RR interval; subsequent intervals
+are one sample short because the event edge resets timer without incrementing.
+f8/current, f9/previous and f11/current-previous are narrowed to signed16.
+f10 is floor(current*4096/previous), low16 only; previous=0 yields fake4096.
+No validity or refractory filter exists. History is lost at window boundaries.
+These are confirmed semantics/bugs. Threshold/local-maximum heuristics and the
+choice of digital baseline are separate algorithm limitations, not QRS proof.
+
+Frozen dependencies: G2.1 signed preprocessing; G2.2 exact RMS/variance/crest;
+G1 FSM/APB/sequencer/ADC/pacer/UART; MLP weights/normalization/order unchanged.
+window_buffer writes on enable && sample_valid; windows end at indices511,
+767,...2047 (512 long, stride256). window_ready is registered on final write.
+Feature RAM reads use ADDR/WAIT/READ; feature_valid is one cycle, then MLP start,
+then result/packet capture. Existing real-time read-vs-next-write timing remains
+required: 360 Hz board and 20 kHz full-chain simulation both leave enough time.
+
+NEW ZERO CROSSING (f3, integer count, 0..511)
+Delete zeros from each 512-sample signed window, then count adjacent opposite
+signs in the remaining sequence. Leading/trailing/all zeros create no crossing.
+-1,0,0,+1 ->1; +1,0,-1 ->1; -1,0,-1 ->0; [-128,+127]*256 ->511.
+Implement signed comparisons x<0/x>0 and a last-nonzero-sign-valid bit.
+Reset this state on every window; crossings in overlap legitimately reappear.
+The half-ratio convention (zero counts nonnegative) is unchanged.
+
+CONTINUOUS RR STREAM AND SNAPSHOT
+Expose window_buffer's existing preprocessed_sample and accepted write strobe
+as output ports; no added preprocessing/register delay. New rr_tracker consumes
+exactly this stream on the same edge as RAM. Never feed it feature RAM reads.
+Use uint64 next_sample_index, starting0, increment once per accepted sample;
+two signed8 history samples and a 2-sample fill counter. At arrival x[n], n>=2:
+candidate at p=n-1 iff x[p]>=T && x[p]>x[p-1] && x[p]>=x[n]. Positive polarity.
+T is the FULL signed16 APB ecg_threshold, default80 signed code units.
+Valid T range1..127; invalid T disables detection and clears RR/detector history
+on accepted samples, but not the stream index. A valid live threshold is used
+at confirmation time. Flat-top ties choose first plateau sample; constant input
+produces no event. No synthetic previous sample before stream start. A terminal
+peak cannot be confirmed without a following sample; do not flush a fake zero.
+
+REFRACTORY_SAMPLES parameter default72 = ceil(360*200ms/1000), 200ms at360Hz.
+New candidate p accepted iff no previous accepted peak or p-last_peak>=72.
+Rejected candidate never moves last_peak or history. Each accepted event is a
+single clock pulse with uint64 event_timestamp=p; absolute timestamps monotonic.
+MAX_RR_SAMPLES default1800 =5 nominal seconds, configurable, technical stale-data
+limit, NOT a clinically validated range. Legal parameters 1<=REFRACTORY<=MAX<=32767.
+Interval d=p-last_peak uses unsigned64 difference; only bounded legal d narrows.
+At each accepted sample n, if (n-1)-last_peak>MAX, clear history before considering
+the candidate. Thus an interval exactly MAX can still confirm one sample later;
+an overlong candidate starts a fresh first-peak epoch. No arrival/no time advance:
+validity measures accepted-sample time, not a wall-clock acquisition watchdog.
+At uint64 maximum the tracker saturates, clears validity and latches internal
+timestamp_overflow until reset; no timestamp wrap/reused event. This defensive
+case is separately fault-tested (normal lifetime about1.62 billion years).
+
+No peaks: all RR fields invalid. One accepted peak: no interval yet. Two peaks:
+current valid, previous invalid. Third onward: current and previous valid.
+No new peak: hold history across windows until accepted-sample timeout above.
+Full reset asynchronous and soft reset synchronous both clear index, detector,
+events, intervals, validity, snapshots. This matches soft-reset ROM replay.
+Feature start resets only its window accumulators, NEVER the continuous tracker.
+
+Top captures tracker current/previous/valid bits when registered window_ready
+is observed: tracker state already includes final write's candidate confirmation.
+This snapshot includes confirmations through the window end, not a future sample.
+For a peak at511 confirmed at512, window ending511 does not yet include it.
+Snapshot stays stable during extraction; feature latches it on accepted start.
+MLP/UART consume the same completed 12-feature vector. No extra inference/packet.
+
+RR OUTPUTS / VALIDITY / TRANSPORT
+All existing ports and feature positions remain signed16:
+f8 = current interval in samples if current_valid, otherwise0; F=0.
+f9 = previous interval in samples if both valid, otherwise0; F=0.
+f10 = min(32767,floor(current*4096/previous)) if both valid, otherwise0;
+       signed16 F=12 (Q4.12 including sign), range0..7.999755859375.
+f11 = current-previous if both valid, otherwise0; signed F=0 samples.
+Both intervals restricted1..32767, so difference [-32766,32766] cannot overflow.
+Internal feature rr_valid means BOTH intervals validated; current-only status is
+separate in tracker/snapshot. Inputs are guarded before narrowing/division; no
+zero denominator. Reuse existing unsigned28 restoring divider; 16-bit current
+shift12 fits28. Saturate full quotient before narrowing. Internal
+rr_ratio_saturated indicates expected representation clipping, NOT feature error.
+No-peak/invalid/timeout and ratio clipping never reuse UART hardware error flags.
+Existing G2.2 arithmetic overflow behavior is unchanged.
+
+UART still33 bytes, 12 signed16 features, same checksum/class/error semantics.
+Zeros provide a documented missing-value convention, but there is no dedicated
+validity or clipping metadata, and external software cannot distinguish causes
+or full-reset epoch from physiology. MLP likewise lacks a validity mask and uses
+placeholder weights. Proposed future version2 packet: version/type change plus
+current_valid/pair_valid/ratio_saturated/timestamp_overflow, sample timestamp and
+reset epoch. NOT implemented in G2.3; requires coordinated host/model revision.
+
+WIDTHS / COST
+Samples signed8, threshold signed16, timestamp/difference unsigned64; stored
+intervals unsigned16 but constrained1..32767. ZC count16 (max511), boolean sign
+history. Preserve sqrt16 iterations, shared divider28 iterations and math states.
+Feature latency remains1559/1588/1617 cycles depending on zero RMS/pair validity.
+No combinational division or additional waveform RAM. Add tracker file/project
+entry and top/window/feature ports only where the data-flow dependency requires.
+
+VERIFICATION BEFORE IMPLEMENTATION BUILD
+Run preserved G2.2 complete21-group baseline before changes, separate directory.
+Independent Python chronological candidate enumeration and refractory/history
+math, never repeated per-window RR; independent ZC by filtering zeros. Separate
+g23_signed/g23_legacy golden, prior golden/checkpoints unchanged. Compare all
+unaffected features bit-for-bit with G2.2 on every window and directed case.
+Questa directed stream/event/snapshot/feature tests: constants,1/2/3+ peaks,
+variable intervals, refractory edges, long gaps, indices255/256/511/512, overlap,
+no-new-peak windows, plateaus, signed extrema/invalid thresholds, soft/hard reset,
+timestamps beyond16 bits and terminal64-bit saturation, ratio floor/saturation,
+snapshot during active computation. Retain G1/G2.1/G2.2 checks via documented
+generated bench adaptations for new ports and independent G2.3 expectations;
+no assertions removed. Keep original bench/reference files intact.
+Full ROM at accelerated20kHz:2048 ordered samples,3584 window reads,7 features,
+7 accepted MLP transactions,7 packets,231 exact bytes, class injection, reset/replay.
+Only after functional PASS: isolated Gowin build of hashed tested sources with
+real20ns clock. Compare area/Fmax/WNS/TNS/path against84.031MHz/8.100ns/0.203ns/0TNS.
+Hardware NOT RUN. No clinical accuracy claims. No trained MLP integration.

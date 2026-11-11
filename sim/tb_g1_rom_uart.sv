@@ -7,6 +7,7 @@ module tb_g1_rom_uart;
     // 2500 cycles/sample: longer than the entire feature RAM read, and
     // 256*2500 cycles/window > 33*10*437 UART cycles. No circular RAM drift.
     top_ecg_rom_demo #(.CLK_HZ(50_000_000), .TARGET_HZ(20_000),
+        .PREPROCESS_MODE(0), // frozen G1 numerical checkpoint, unchanged golden
         .ROM_HEX("src/ecg_rom.hex")) dut (.sys_clk(clk), .sys_rst_n(rst_n),
         .uart_txd(tx), .uart_rxd(1'b1), .status_led(), .demo_done(),
         .demo_overflow(overflow), .demo_class());
@@ -19,6 +20,7 @@ module tb_g1_rom_uart;
     bit inject;
     reg [1:0] injected_class=0;
     integer capture;
+    string capture_dir;
     reg [7:0] received;
     integer b, w, j;
     reg [7:0] expected, checksum=0;
@@ -27,8 +29,8 @@ module tb_g1_rom_uart;
     initial begin
         inject=$test$plusargs("INJECT_CLASS");
         if(inject) force dut.sys_class_code=injected_class;
-        capture=$fopen(inject ? "sim/g1_results/uart_injected.bin" :
-                               "sim/g1_results/uart_golden.bin","wb");
+        if (!$value$plusargs("CAPTURE_DIR=%s",capture_dir)) capture_dir="sim/g1_results";
+        capture=$fopen({capture_dir, inject ? "/uart_injected.bin" : "/uart_golden.bin"},"wb");
         if(!capture) $fatal(1,"cannot create UART capture");
     end
     always @(negedge clk) if(rst_n && dut.mlp_start)

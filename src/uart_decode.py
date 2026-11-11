@@ -23,6 +23,8 @@ Usage:
         -> full acceptance check against src/golden/expected_packets.json.
            Exit code 0 = capture meets the acceptance criteria, 1 = it does
            not, 2 = usage / IO error.
+    python -I src/uart_decode.py --check capture.bin --golden src/golden/g21_signed/expected_packets.json
+        -> explicitly select G2.1 signed preprocessing; mode is not in the packet.
 
 Acceptance criteria for --check (a clean demo capture):
     * exactly 231 bytes total (7 packets x 33 bytes)
@@ -209,8 +211,8 @@ def check_capture(data: bytes, golden: dict):
     return ok, lines
 
 
-def _load_golden():
-    return json.loads((HERE / "golden" / "expected_packets.json").read_text())
+def _load_golden(path=None):
+    return json.loads((Path(path) if path else HERE / "golden" / "expected_packets.json").read_text())
 
 
 def _rebuild(body: bytes) -> bytes:
@@ -281,17 +283,18 @@ def self_test():
 if __name__ == "__main__":
     args = sys.argv[1:]
     if args and args[0] == "--check":
-        if len(args) != 2:
-            print("usage: uart_decode.py --check <capture.bin>",
+        if not (len(args) == 2 or (len(args) == 4 and args[2] == "--golden")):
+            print("usage: uart_decode.py --check <capture.bin> [--golden <expected.json>]",
                   file=sys.stderr)
             sys.exit(2)
         path = Path(args[1])
         try:
             blob = path.read_bytes()
-        except OSError as e:
-            print(f"ERROR cannot read {path}: {e}", file=sys.stderr)
+            golden = _load_golden(args[3] if len(args) == 4 else None)
+        except (OSError, ValueError) as e:
+            print(f"ERROR cannot read capture/golden: {e}", file=sys.stderr)
             sys.exit(2)
-        ok, report = check_capture(blob, _load_golden())
+        ok, report = check_capture(blob, golden)
         print(f"== capture check: {path} ({len(blob)} bytes) ==")
         for line in report:
             print(line)

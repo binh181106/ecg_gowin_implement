@@ -7,7 +7,9 @@ module top_ecg_rom_demo #(
     parameter ROM_HEX     = "demo/ecg_rom.hex",
     parameter integer UART_CLKS_PER_BIT = 437,
     parameter integer PREPROCESS_MODE = 1, // ROM unsigned codes -> signed raw-128
-    parameter [ROM_DW-1:0] ADC_ZERO_CODE = 128
+    parameter [ROM_DW-1:0] ADC_ZERO_CODE = 128,
+    parameter integer RR_REFRACTORY_SAMPLES = 72,
+    parameter integer RR_MAX_SAMPLES = 1800
 ) (
     input  wire             sys_clk,
     input  wire             sys_rst_n,
@@ -69,6 +71,34 @@ module top_ecg_rom_demo #(
     wire [8:0] feat_read_addr;
     wire feat_read_en;
     wire signed [ROM_DW-1:0] window_frame_wire;
+    wire signed [ROM_DW-1:0] rr_stream_sample;
+    wire rr_stream_accept;
+    wire [15:0] rr_current, rr_previous;
+    wire rr_current_valid, rr_previous_valid;
+    reg [15:0] rr_snapshot_current, rr_snapshot_previous;
+    reg rr_snapshot_current_valid, rr_snapshot_previous_valid;
+    wire rr_valid, rr_ratio_saturated;
+    rr_tracker #(.REFRACTORY_SAMPLES(RR_REFRACTORY_SAMPLES),
+                 .MAX_RR_SAMPLES(RR_MAX_SAMPLES)) u_rr (
+        .clk(clk), .rst_n(rst_n), .soft_reset(soft_reset),
+        .sample_accept(rr_stream_accept), .sample_in(rr_stream_sample),
+        .threshold($signed(ecg_threshold)), .rr_current(rr_current),
+        .rr_previous(rr_previous), .current_valid(rr_current_valid),
+        .previous_valid(rr_previous_valid), .next_sample_index(),
+        .peak_event(), .event_timestamp(), .timestamp_overflow());
+    // window_ready is registered by the final RAM write. At this edge the
+    // tracker includes that write, including any newly confirmed peak.
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n || soft_reset) begin
+            rr_snapshot_current <= 0; rr_snapshot_previous <= 0;
+            rr_snapshot_current_valid <= 0; rr_snapshot_previous_valid <= 0;
+        end else if (window_ready) begin
+            rr_snapshot_current <= rr_current;
+            rr_snapshot_previous <= rr_previous;
+            rr_snapshot_current_valid <= rr_current_valid;
+            rr_snapshot_previous_valid <= rr_previous_valid;
+        end
+    end
     wire [31:0] apb_paddr, apb_pwdata;
     wire apb_psel, apb_penable, apb_pwrite;
     reg [15:0] win_index;
@@ -112,7 +142,8 @@ module top_ecg_rom_demo #(
         .window_ready(window_ready),
         .samples_collected(),
         .ready_bank(),
-        .sample_cnt()
+        .sample_cnt(),
+        .stream_sample(rr_stream_sample), .stream_accept(rr_stream_accept)
     );
     // FPGA GOWIN: flatten packed features, feature zero is LSB.
 wire [191:0] features_flat = {
@@ -131,6 +162,11 @@ wire [191:0] features_flat = {
         .soft_reset(soft_reset),
         .start_compute(feature_start),
         .ecg_threshold(ecg_threshold),
+        .rr_snapshot_current(rr_snapshot_current),
+        .rr_snapshot_previous(rr_snapshot_previous),
+        .rr_snapshot_current_valid(rr_snapshot_current_valid),
+        .rr_snapshot_previous_valid(rr_snapshot_previous_valid),
+        .rr_valid(rr_valid), .rr_ratio_saturated(rr_ratio_saturated),
         .read_enable(1'b0),
         .sample_addr(feat_read_addr),
         .sample_in(window_frame_wire),

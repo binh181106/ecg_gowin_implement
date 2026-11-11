@@ -11,6 +11,11 @@ module feature_extraction #(
 
     input  wire start_compute,
     input  wire [15:0] ecg_threshold,
+    // G2.3 window-end snapshot; detector runs outside the RAM read loop.
+    input wire [15:0] rr_snapshot_current, rr_snapshot_previous,
+    input wire rr_snapshot_current_valid, rr_snapshot_previous_valid,
+    output reg rr_valid,
+    output reg rr_ratio_saturated,
 
     input  wire read_enable,
     output reg  [8:0] sample_addr,
@@ -59,12 +64,15 @@ module feature_extraction #(
 
     reg [15:0] zc_cnt;
     reg prev_sign;
+    reg have_nonzero;
     reg [15:0] pos_cnt;
 
-    reg [15:0] rr_timer;
     reg [15:0] rr_current;
     reg [15:0] rr_previous;
-    reg [7:0] sample_delayed;
+    wire snapshot_current_ok = rr_snapshot_current_valid &&
+        rr_snapshot_current != 0 && !rr_snapshot_current[15];
+    wire snapshot_pair_ok = snapshot_current_ok && rr_snapshot_previous_valid &&
+        rr_snapshot_previous != 0 && !rr_snapshot_previous[15];
 
     reg [31:0] sq_in;       // unsigned S2<<7; max 2^30, needs 31 bits
     reg [15:0] sq_rem;      // <=65534 for radicand <=2^30
@@ -127,11 +135,12 @@ module feature_extraction #(
             zc_cnt         <= 16'd0;
             pos_cnt        <= 16'd0;
             prev_sign      <= 1'b0;
+            have_nonzero   <= 1'b0;
 
-            rr_timer       <= 16'd0;
             rr_current     <= 16'd0;
             rr_previous    <= 16'd0;
-            sample_delayed <= 8'd0;
+            rr_valid <= 0;
+            rr_ratio_saturated <= 0;
 
             sq_in          <= 32'd0;
             sq_rem         <= 16'd0;
@@ -169,10 +178,11 @@ module feature_extraction #(
 
             abs_peak_reg   <= 8'd0;
 
-            rr_timer       <= 16'd0;
             rr_current     <= 16'd0;
             rr_previous    <= 16'd0;
-            sample_delayed <= 8'd0;
+            rr_valid <= 0;
+            rr_ratio_saturated <= 0;
+            zc_cnt <= 0; prev_sign <= 0; have_nonzero <= 0;
 
             sq_in          <= 32'd0;
             sq_rem         <= 16'd0;
@@ -203,10 +213,11 @@ module feature_extraction #(
                         zc_cnt         <= 16'd0;
                         pos_cnt        <= 16'd0;
                         prev_sign      <= 1'b0;
-                        rr_timer       <= 16'd0;
-                        rr_current     <= 16'd0;
-                        rr_previous    <= 16'd0;
-                        sample_delayed <= 8'd0;
+                        have_nonzero   <= 1'b0;
+                        rr_current <= snapshot_current_ok ? rr_snapshot_current : 16'd0;
+                        rr_previous <= snapshot_pair_ok ? rr_snapshot_previous : 16'd0;
+                        rr_valid <= snapshot_pair_ok;
+                        rr_ratio_saturated <= 0;
                         sq_in          <= 32'd0;
                         sq_rem         <= 16'd0;
                         sq_root        <= 16'd0;
@@ -244,26 +255,16 @@ module feature_extraction #(
                     if (sample_magnitude > {1'b0, abs_peak_reg})
                         abs_peak_reg <= sample_magnitude[7:0];
 
-                    if (sample_cnt > 10'd0) begin
-                        if (prev_sign ^ sample_in[7])
+                    // Ignore zeros; count opposite successive NONZERO signs.
+                    if ($signed(sample_in) != 0) begin
+                        if (have_nonzero && (prev_sign != ($signed(sample_in) < 0)))
                             zc_cnt <= zc_cnt + 16'd1;
+                        prev_sign <= ($signed(sample_in) < 0);
+                        have_nonzero <= 1;
                     end
-
-                    prev_sign <= sample_in[7];
 
                     if (!sample_in[7])
                         pos_cnt <= pos_cnt + 16'd1;
-
-                    if (sample_delayed > ecg_threshold[7:0] &&
-                        sample_in <= ecg_threshold[7:0]) begin
-                        rr_previous <= rr_current;
-                        rr_current  <= rr_timer;
-                        rr_timer    <= 16'd0;
-                    end else begin
-                        rr_timer <= rr_timer + 16'd1;
-                    end
-
-                    sample_delayed <= sample_in;
 
                     if (sample_cnt == NUM_SAMPLES - 1) begin
                         read_en <= 1'b0;
@@ -286,7 +287,7 @@ module feature_extraction #(
                     f_half_ratio <= $signed(pos_cnt <<< 3);
                     f_rr         <= $signed(rr_current);
                     f_rr_prev    <= $signed(rr_previous);
-                    f_rr_diff    <= $signed(rr_current - rr_previous);
+                    f_rr_diff    <= rr_valid ? $signed(rr_current - rr_previous) : 16'sd0;
                     state        <= S_CALC_VAR;
                 end
 
@@ -377,8 +378,8 @@ module feature_extraction #(
 
                 S_DIV_RR: begin
                     if (div_cnt == 6'd0) begin
-                        if (rr_previous == 16'd0) begin
-                            f_rr_ratio <= 16'd4096;
+                        if (!rr_valid || rr_previous == 16'd0) begin
+                            f_rr_ratio <= 16'd0;
                             div_cnt    <= 6'd0;
                             state      <= S_DONE;
                         end else begin
@@ -407,7 +408,9 @@ module feature_extraction #(
 
                         div_cnt <= div_cnt + 6'd1;
                     end else begin
-                        f_rr_ratio <= div_quot[15:0];
+                        f_rr_ratio <= div_quot > 28'd32767 ? 16'sd32767 :
+                                      $signed({1'b0,div_quot[14:0]});
+                        rr_ratio_saturated <= div_quot > 28'd32767;
                         state      <= S_DONE;
                         div_cnt    <= 6'd0;
                     end

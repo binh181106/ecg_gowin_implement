@@ -37,13 +37,17 @@ def hashes():
             for p in PROTECTED if p.is_file()}
 
 def main():
+    global OUT
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--baseline", action="store_true")
     parser.add_argument("--tests", nargs="+", choices=TESTS)
     parser.add_argument("--questa", default="C:/MentorGraphics/win64")
     parser.add_argument("--prim", default="C:/Gowin/Gowin_V1.9.12.01_x64/IDE/simlib/gw5a/prim_sim.v")
+    parser.add_argument("--out", type=Path, default=OUT,
+                        help="Separate output directory to preserve earlier PASS checkpoints")
     args = parser.parse_args()
-    OUT.mkdir(exist_ok=True)
+    OUT = args.out.resolve()
+    OUT.mkdir(parents=True, exist_ok=True)
     prefix = "baseline_" if args.baseline else ""
     commands = OUT / (prefix + "commands.txt")
     commands.write_text("", encoding="utf-8")
@@ -114,7 +118,7 @@ def main():
         log = OUT / (prefix + name + ".log")
         result = run([executables["vsim"], "-modelsimini", ini, "-c", "-onfinish", "exit",
                       "-l", log, "-wlf", OUT / (prefix + name + ".wlf"),
-                      "work." + bench, *extra, "-do",
+                      "work." + bench, *extra, "+CAPTURE_DIR=" + OUT.as_posix(), "-do",
                       "do " + macro.relative_to(ROOT).as_posix()], timeout=300)
         content = log.read_text(encoding="utf-8", errors="replace") if log.exists() else result.stdout
         passed = result.returncode == 0 and marker in content and "** Fatal:" not in content
@@ -129,7 +133,7 @@ def main():
         decoder_args = [[sys.executable, "-I", "src/uart_decode.py"]]
         if "rom_uart" in names:
             decoder_args.append([sys.executable, "-I", "src/uart_decode.py", "--check",
-                                 "sim/g1_results/uart_golden.bin"])
+                                 (OUT / "uart_golden.bin").as_posix()])
         for i, cmd in enumerate(decoder_args):
             result = run(cmd)
             (OUT / f"decoder_{i}.log").write_text(result.stdout + result.stderr, encoding="utf-8")

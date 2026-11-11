@@ -1,0 +1,412 @@
+G2.3 -- ZERO-CROSSING & CONTINUOUS RR TRACKER
+Date: 2026-11-11
+Branch: improve/g2-feature-extraction
+Baseline HEAD: 183428524651d2e9c67eb28ede1a2e311cb75212
+Scope: G2.3 only; no trained MLP integration, commit, push or branch change.
+
+RESULTS
+Pre-edit G2.2 complete regression: PASS 21/21 groups.
+G2.3 current-source regression: PASS 25/25 groups (19 Questa +6 Python/decoder).
+Questa compile: PASS, 0 errors, 0 warnings.
+Independent chronological reference and strict UART comparisons: PASS.
+Source/golden unchanged throughout verified run: PASS.
+Gowin synthesis/P&R/STA: PASS; 50MHz timing closed, Fmax76.809MHz.
+Setup WNS +6.981ns; Hold WNS +0.238ns; Setup/Hold TNS0/0, zero violations.
+Hardware: NOT RUN (no board available).
+Clinical QRS accuracy / MIT-BIH annotation assessment: NOT RUN.
+
+1. AUDIT AND ROOT CAUSES
+G2_3_DESIGN_CONTRACT.txt was created before changing RTL. The pre-edit audit
+covered feature_extraction, window_buffer, top, pacer, ADC, AI, G2.2 reference,
+signed golden and G1/G2.1/G2.2 benches/runners. The branch and HEAD above were
+read locally. The workspace already contained user changes in implementation
+artifacts, project user settings, G1 benches/runner and uart_decode.py.
+sim/g23_results/checkpoint_before preserves 100 files plus initial git evidence.
+
+Confirmed RR defects in the old implementation:
+- The threshold detector compared unsigned bytes, including negative signed
+  ECG values as128..255, against only threshold[7:0].
+- Detection occurred in the overlapping RAM read loop. Every window reset
+  timer/current/previous; repeated samples could produce repeated events and
+  history could not cross windows.
+- The first event's count was measured from window start, not a preceding peak.
+  Later timer differences were one short because event cycles reset to0.
+- previous=0 produced ratio4096 (1.0) without a measured pair. Ratio narrowing
+  kept only low16 bits and could wrap into a negative signed result.
+- No validity representation existed.
+
+Old ZC deliberately classified zero as nonnegative and counted adjacent sign
+bits. Thus -1,0,-1 counted2. This phase changes that explicit policy; it is not
+presented as proof that every prior sign-bit comparison was mathematically wrong.
+Lack of refractory filtering, polarity choice, fixed threshold and local maxima
+are detector design limitations. Correct RTL does not establish QRS accuracy.
+
+2. ZERO-CROSSING AND RR DEFINITIONS
+ZC: delete all zeros within each 512-sample signed window, then count opposite
+signs between adjacent remaining values. Count range0..511, integer/F=0.
+Examples: -1,0,0,+1 ->1; -1,0,-1 ->0; +1,0,-1 ->1; all zeros ->0;
+[-128,+127]*256 ->511. Leading/trailing zeros do not invent a crossing.
+Nonzero-sign history resets per window. Crossings in overlap may appear in
+both window-level features. f_half_ratio still counts x>=0 as before.
+
+RR candidate p=n-1, confirmed when accepted sample x[n] arrives:
+  x[p]>=T AND x[p]>x[p-1] AND x[p]>=x[n], with two genuine preceding samples.
+All sample comparisons signed. Positive polarity. Full signed16 T from existing
+APB ecg_threshold, default80 code units. Supported T=1..127; otherwise clear
+detector/RR history on each accepted sample. Threshold is evaluated at candidate
+confirmation. First flat-top sample wins; constant positive input has no peak.
+A peak on the final ROM sample is unconfirmed without a later real sample.
+
+Candidate p is accepted when no previous peak exists or p-last_peak>=72.
+REFRACTORY_SAMPLES is configurable: default ceil(360*200/1000)=72 samples,
+nominal200ms at360Hz. Rejected candidates never move the accepted timestamp.
+MAX_RR_SAMPLES default1800 = nominal5 seconds, a technical stale-history limit,
+not a clinical range. Legal parameters: 1<=refractory<=maximum<=32767.
+Before considering the candidate, expire history when (n-1)-last_peak>maximum.
+This deliberately permits a peak exactly maximum samples away to confirm on
+the following sample. An overlong candidate becomes the first peak of a fresh
+history. Time advances only with accepted samples, not idle FPGA clocks.
+
+3. ARCHITECTURE, TIMESTAMPS, SNAPSHOTS AND RESET
+ADC -> existing G2.1 preprocessing -> accepted RAM write strobe
+    -> rr_tracker (candidate/refractory/64-bit timestamp/history)
+    -> top window-end snapshot -> feature start latch -> f8..f11
+    -> existing feature_valid/MLP/control/result/packetizer path.
+
+Tracker consumes each chronological write once, never feature RAM reads.
+next_sample_index starts0 and increments once per accepted sample. Absolute
+candidate and accepted timestamps and differences are unsigned64. Only bounded
+intervals narrow to16 bits. A directed66000-sample stream crosses65535 without
+wrapping or losing history. At uint64 maximum, index saturates, history becomes
+invalid, events stop and internal timestamp_overflow latches until reset;
+this lifetime boundary is tested through explicit nonphysical state injection.
+
+window_ready is registered on the final RAM write. Top observes it one clock
+later, after tracker updates for that write, and captures current/previous plus
+their validity. Feature then latches the snapshot at accepted start. A peak at
+511 confirmed by sample512 is absent from the window ending511 and present in
+the next snapshot. New input changes during extraction cannot change its RR
+result. Directed tests clear live snapshot inputs immediately after start to
+verify the latch. Window overlap never feeds the detector again.
+
+No peak -> no interval; one peak -> no interval; two peaks -> current only;
+three peaks -> current and previous. History persists across windows without a
+new peak until the accepted-sample timeout. There is no wall-clock watchdog.
+Hard reset is asynchronous. Soft reset is synchronous in tracker/feature/window
+and also restarts the existing ROM replay path. Both clear timestamp/history,
+detector state, validity and snapshots. Feature start does not reset tracker.
+Existing feature outputs may retain old bits after soft reset, but feature_valid
+is cleared and control/MLP/UART abort; no stale result is delivered.
+
+4. EXACT RTL FILES AND DATA-FLOW DEPENDENCIES
+src/rr_tracker.v:3 -- new continuous detector and configurable intervals.
+  :23 timestamps/distance/expiry; :26 signed local-maximum candidate;
+  :30 reset; :42 accepted-sample processing; :44 timestamp saturation;
+  :59 expiry; :64 event acceptance; :69 interval/history update.
+src/window_buffer.v:47 -- add stream_sample/stream_accept observation outputs.
+  :66 exposes existing preprocessing with no extra register or latency;
+  :67 exposes enable && sample_valid with reset gating. Preprocessing/RAM
+  addressing/window generation equations are unchanged.
+src/top_ecg_rom_demo.v:10 -- configurable refractory/maximum parameters.
+  :72 stream/history wires; :81 tracker; :91 snapshot capture;
+  :145 window stream connection; :165 feature snapshot connection.
+src/feature_extraction.v:15 -- snapshot inputs and internal validity outputs.
+  :72 guard inputs before narrowing; :217 capture at accepted start;
+  :258 nonzero signed ZC; :290 guarded difference; :379 guarded RR division;
+  :411 full quotient saturation and separate rr_ratio_saturated indication.
+Bao_rom.gprj:16 -- add rr_tracker.v so project/GUI and isolated builds compile it.
+
+Cross-module changes are necessary to observe chronological preprocessed writes,
+snapshot their history at window boundaries, then carry that snapshot through
+feature computation. They add no new sample path latency or extra transaction.
+ecg_threshold remains in the feature module interface for source compatibility;
+the detector now uses it in the tracker through top. Legacy direct unit benches
+must explicitly drive the new snapshot inputs; old sources are preserved.
+
+G2.2 RMS, variance, crest equations, sqrt and crest division are unchanged.
+G2.1 preprocessing, feature order and signed16 storage are unchanged.
+No changes to control_fsm/APB/sequencer/ADC/pacer/packetizer/UART/AI/weights/SDC.
+
+5. RR VALIDITY, FIXED-POINT AND EXTERNAL LIMITATION
+f8 current: valid current interval in samples, otherwise0; signed16/F=0.
+f9 previous: previous interval if both intervals valid, otherwise0; F=0.
+f10 ratio: pair_valid ? min(32767,floor(current*4096/previous)) :0.
+  Signed16 with12 fractional bits (Q4.12 including sign), max7.999755859375.
+f11 difference: pair_valid ? current-previous :0; signed16/F=0 samples.
+All valid stored intervals1..32767; difference range[-32766,32766] fits exactly.
+Do not interpret sample counts as milliseconds. Nominal ms=1000*samples/360.
+Full28-bit quotient is checked before narrowing. Divide-by-zero is guarded.
+Internal tracker current_valid/previous_valid, snapshot bits and feature rr_valid
+distinguish current-only from valid pairs. Malformed/zero/negative snapshot values
+are rejected. rr_ratio_saturated indicates representational clipping; it does
+not change the hardware arithmetic error flag. Missing history/timeout likewise
+does not become an ADC/feature/MLP hardware error. G2.2 overflow logic unchanged.
+
+Examples: pair300/200 -> f8..11=[300,200,6144,100]; 200/300 ->[200,300,2730,-100];
+1800/72 ->[1800,72,32767,1728], clipped; two peaks200 apart ->[200,0,0,0].
+Missing measurements no longer masquerade as valid ratio1.0.
+
+UART remains33 bytes, same version/type/length/order/checksum/class/error bits.
+There is no dedicated validity, clipping, timeout-cause or epoch metadata. The
+zero convention can mark missing intervals, but the host cannot infer causes
+or distinguish clipping from an exactly represented maximum. MLP has no mask.
+Proposed future version2: new packet type/version plus current_valid, pair_valid,
+ratio_saturated, timestamp_overflow, sample timestamp and reset epoch. This is
+documented only; no new packet or reinterpretation of error bits was implemented.
+
+6. INDEPENDENT PYTHON AND DIRECTED QUESTA VERIFICATION
+src/g23_reference.py:20 -- ZC uses zero filtering and opposite-sign products.
+  :25 independent RR equations with Python unbounded integers/floor division.
+  :33 enumerates candidates once over the chronological stream, filters events
+  once, then selects already confirmed history for each sample/window. It does
+  not reproduce clock FSM/divider cycles or detect peaks in repeated windows.
+  :69 generates separate src/golden/g23_signed and g23_legacy files.
+sim/gen_g23_vectors.py:33 -- hand-checked examples, stream traces, directed330
+  windows (all prior313 retained +5 zero sequences +12 RR snapshot/guard cases).
+All seven unaffected features match G2.2 exactly per directed/golden window;
+in particular RMS, variance and crest are unchanged bit-for-bit.
+
+Python preprocessing: PASS 66048 conversion checks,16 directed cases.
+Python frozen G2.2 arithmetic: PASS 313 cases, all256 constants, variance identity.
+Python G2.3: PASS 20 streams /100048 samples /330 windows.
+Independent golden check: PASS signed and legacy,231 strict bytes each.
+Tracker Questa: PASS 700361 checks,68 accepted events across20 reset epochs.
+Cases include zero/positive/negative constants, one/two/multiple peaks, changing
+RR intervals, refractory rejection and exact72 boundary, exact1800 and overlong
+gaps,255/256/511/512, overlap, windows without new peaks, flat tops, threshold
+equality/below/invalid(-1,256), signed extrema, pauses,65535 crossing and resets.
+Pauses verify stable timestamp/history and no repeated event pulses.
+Full timestamp saturation is separately labeled nonphysical fault injection.
+
+Arithmetic Questa: PASS 330 cases /207782 checks. Retains exact consumed samples,
+signed sum/energy/variance numerator/abs peak, sqrt prefix/remainder invariants,
+16 sqrt steps,28 crest steps, quotient identity, all12 outputs, overflow,
+single-cycle valid and exact1559/1588/1617-cycle latency. Adds pair/clipping bits
+and snapshot stability after live inputs are cleared.
+Reset/fault Questa: PASS 273 checks, reset in sqrt/crest/RR divide,9 nonphysical
+G2.2 guard cases,18 recovered completions. Invalid RR never sets hardware flags.
+Feature-active resets also retained in signed-feature and top APB reset tests.
+
+7. G1 / G2.1 / G2.2 REGRESSION
+Before RTL edits: sim/g23_results/g22_before/summary.txt -- PASS21/21.
+Final exact tested source: sim/g23_results/verified/input_sha256.json.
+Final summary: sim/g23_results/verified/summary.txt -- PASS25/25.
+G1 groups: control, start_accept, apb, seq, class_uart, rom_uart,
+rom_uart_injected, reset, g2_rom, g2_checkpoint -- all PASS.
+G2.1: preprocessing11595 checks (six modes,256 raw codes,overlap), signed feature
+8444 checks/16 cases, signed UART normal/injected -- all PASS.
+G2.2: all original313 arithmetic windows included, plus all original reset/fault
+checks; retained sqrt/divider invariants and exact arithmetic -- PASS.
+G2.3: tracker, boundary/overlap windows, two-epoch full replay -- PASS.
+Two decoder groups: self-test and strict captures/corruption checks -- PASS.
+
+Original G1/G2.1/G2.2 benches and references are unchanged. sim/run_g23.py:57
+generates reviewable copies in verified/adapted and records adaptation.patch.
+Only independently calculated expectations, new snapshot input stimulus, paths
+and additional checks change. No original assertions are removed. Historical
+numeric RR/ZC goldens are deliberately not asserted against new semantics.
+Direct legacy feature benches receive explicit absent-history snapshots, or
+reference ROM snapshots. The G2.2 RR-reset fixture now supplies a valid external
+300/200 pair so its original reset-during-divider check still runs.
+
+Questa2024.1 compile0 warnings. Vendor GW5A SDPB model emits four known out-of-
+bounds part-select optimization warnings per RAM instance (24 for six-mode
+preprocessing); these existed in baseline. No new missing-port warnings remain.
+Development evidence kept: integration/compile.log records an initial bench
+declaration-order error; integration2/replay.log records an epoch-counter check
+sampling during reset. Both bench issues were corrected, and the full final
+suite passed. No design mismatch or assertion was suppressed to obtain PASS.
+
+8. FULL-CHAIN UART AND SNAPSHOT RESULTS
+Full chain uses accelerated20kHz pacing at50MHz,2500 clocks/sample, UART437.
+It is not actual360Hz elapsed time or a board measurement. Existing board pacing
+remains target360Hz (32-bit phase accumulator averages about360.002741Hz).
+Each signed/legacy normal/injected run checks2048 ordered ROM/ADC/RAM writes,
+3584 ordered window reads,7 windows,7 accepted MLP transactions,7 results,
+7 packets,231 serially decoded bytes with checksum and every byte strict.
+No drops/duplicate inference/packet. Current placeholder weights produce class0;
+testbench-only class injection checks0,1,2,3 transport without changing weights.
+
+Signed ROM accepted event timestamps: [231,515,809,1045,1403,1706,1998].
+Window   ZC   current previous ratio diff   current_valid pair_valid
+1         2      0       0        0     0        0            0
+2         2    284       0        0     0        1            0
+3         3    294     284     4240    10        1            1
+4         4    236     294     3287   -58        1            1
+5         4    358     236     6213   122        1            1
+6         4    303     358     3466   -55        1            1
+7         4    292     303     3947   -11        1            1
+Legacy preprocessing has only events809 and1998 with this positive threshold;
+this intentionally differs from the signed mode and is not clinical evidence.
+
+sim/tb_g23_windows.sv:2 uses2048 synthetic samples with peaks100,255,511,900.
+The peak511 is withheld from snapshot1 until confirmed at512. Snapshots1..3
+have RR vectors [155,0,0,0], [256,155,6765,101], [389,256,6224,133]; remaining
+windows hold the last pair with no new peak. Exactly four events, seven packets,
+231 exact bytes: PASS. Peak255/511 are not counted again in overlapping reads.
+sim/tb_g23_replay.sv:2 checks two complete signed ROM epochs with a real APB soft
+reset between them:4096 samples,14 windows/inferences/packets,462 strict bytes,
+635 explicit check-counter checks plus per-cycle assertions: PASS. Reset occurs
+with valid RR history; tracker/index/snapshot all return to initial state.
+Captured normal/injected packets reject old G1/G2.1/G2.2 goldens and a modified
+feature byte even after recomputing checksum: PASS. No masking of changed fields.
+
+9. GOWIN SYNTHESIS, P&R AND STA
+Build launched only after the full25-group current-source regression PASS.
+Command: python -I sim/run_g23_gowin.py --regression sim/g23_results/verified
+Directory: sim/g23_results/gowin_build (fresh, isolated; original impl untouched).
+Gowin_V1.9.12.01_x64; deviceGW5A-LV25UG324C2/I1; top_ecg_acg525_board.
+Copied tested files verified by SHA256; source and regression manifests saved.
+Real SDC create_clock sys_clk period20.000ns. Synthesis global_freq100 is an
+optimization option retained from baseline, not the actual timing constraint.
+Synthesis, placement, routing, timing analysis, bitstream generation and power
+analysis completed. gw_sh exit_code=0. Reports created2026-11-11; see console.log
+and exit.txt. No rerun or source modification was necessary when resuming.
+
+Measured post-P&R comparison:
+Metric                         G2.2          G2.3          Delta
+LUT                            1511          1941          +430
+ALU                             771           848           +77
+Total logic LUT+ALU             2282          2789          +507
+FF total                       1142          1326          +184
+  logic FF                     1139          1323          +184
+  I/O FF                          3             3             0
+BSRAM                             2             2             0
+DSP vendor units                4.5           4.5             0
+Fmax MHz                     84.031        76.809        -7.222
+Setup WNS ns                 +8.100        +6.981        -1.119
+Hold WNS ns                  +0.203        +0.238        +0.035
+Setup/Hold TNS ns               0/0           0/0           0/0
+Setup/Hold violated endpoints  0/0           0/0           0/0
+BSRAM remains1 SDPB +1 pROM; DSP remains1 MULT12X12 +2 MULT27X36.
+G2.3 uses13% logic,6% registers,4% BSRAM,17% DSP according to vendor report.
+
+Critical setup path moved from G2.2 feature sum_square accumulation to the
+continuous timestamp/event-acceptance logic:
+  u_demo/u_rr/next_sample_index_9_s1/Q
+  -> u_demo/u_rr/last_peak_46_s1/CE
+  16 logic levels; data delay12.756ns; skew0.014ns;
+  arrival15.335ns, required22.316ns, slack6.981ns.
+Critical hold:
+  u_demo/u_window/write_ptr_7_s4/Q
+  -> u_demo/u_window/u_hw_buffer/sdpb_inst_0/ADA[10]
+  arrival1.747ns, required1.509ns, slack0.238ns.
+50MHz target is met despite the Fmax/area cost of continuous64-bit history.
+No timing-constraint relaxation, multicycle exception or clock reduction added.
+
+Evidence under sim/g23_results/gowin_build:
+  impl/pnr/Bao_rom.rpt.txt -- resources/device/constraints
+  impl/pnr/Bao_rom_tr_content.html -- Fmax, WNS/TNS, detailed paths
+  timing_text.txt -- readable extraction of the same timing HTML
+  regression_summary.txt / regression_input_sha256.json -- tested-source gate
+  input_sha256.json -- isolated source copy
+  console.log / exit.txt / build.tcl / effective_options.tcl -- actual build
+The only synthesis warning is pre-existing CV0016 (unused board key0_n).
+Gowin also logged failure to open the external user cache sh.log; the isolated
+build logs/reports/bitstreams were generated successfully and process exit was0.
+This cache-log message did not block synthesis, P&R or STA.
+
+10. GIT, PRESERVATION, REPRODUCTION AND REMAINING LIMITATIONS
+sim/g23_results/preservation.json:96/100 original snapshot files unchanged;
+only project and the three intended existing RTL files changed. This includes
+preservation of original impl artifacts, user edits, prior golden and references.
+New G2.3 files are separate. All earlier checkpoints/builds remain present.
+git diff --stat for the four modified tracked G2.3 files:
+ Bao_rom.gprj             |  1 +
+ src/feature_extraction.v | 61 +++++++++++++++++++++++++-----------------------
+ src/top_ecg_rom_demo.v   | 40 +++++++++++++++++++++++++++++--
+ src/window_buffer.v     |  7 +++++-
+ 4 files changed,77 insertions(+),32 deletions(-).
+This does not count untracked new files (tracker/reference/three benches/two
+runners/vector generator/contract/report/two separate golden directories).
+Global git diff --stat:31 files,45065 insertions,38698 deletions, mostly PRE-EXISTING
+generated implementation differences. Full output: sim/g23_results/global_stat.txt.
+Scoped git diff --check -- src sim Bao_rom.gprj: PASS exit0.
+New-text trailing-whitespace scan: PASS.
+Global git diff --check: FAIL exit2,1850 PRE-EXISTING whitespace findings, exactly
+the same findings as the initial checkpoint, only impl/gwsynthesis/Bao_rom.vg
+and impl/pnr/Bao_rom.rpt.txt. These user artifacts were preserved, not reformatted.
+
+Resume verification: all73 hashed regression inputs still match the final
+verified run. All43 copied build inputs match both their build manifest and the
+current workspace, with zero mismatches. The copied project also matches the
+tested Bao_rom.gprj. All25 PASS markers and zero test Fatal markers reconfirmed.
+The462-byte replay capture was rechecked as two separate strict231-byte epochs.
+Independent Python golden and current capture checks were rerun successfully;
+there was no reason to repeat unchanged synthesis or the entire Questa suite.
+
+EXACT FILES RECOMMENDED FOR GIT STAGING (review only; nothing staged here)
+The20 G2.3 files:
+  Bao_rom.gprj
+  src/feature_extraction.v
+  src/window_buffer.v
+  src/top_ecg_rom_demo.v
+  src/rr_tracker.v
+  src/g23_reference.py
+  src/golden/g23_signed/expected_packets.json
+  src/golden/g23_signed/expected_packets.sv
+  src/golden/g23_legacy/expected_packets.json
+  src/golden/g23_legacy/expected_packets.sv
+  sim/gen_g23_vectors.py
+  sim/run_g23.py
+  sim/run_g23_gowin.py
+  sim/tb_g23_tracker.sv
+  sim/tb_g23_windows.sv
+  sim/tb_g23_replay.sv
+  sim/g23_results/.gitignore
+  sim/g23_vectors/.gitignore
+  G2_3_DESIGN_CONTRACT.txt
+  G2_3_REPORT.txt
+
+Also review/stage these7 EXISTING verification dependencies, which were already
+modified/untracked before G2.3 and have been preserved byte-for-byte:
+  sim/run_g1.py
+  sim/tb_g1_class_uart.sv
+  sim/tb_g1_reset.sv
+  sim/tb_g1_rom_uart.sv
+  src/uart_decode.py
+  src/golden/g21_signed/expected_packets.json
+  src/golden/g21_signed/expected_packets.sv
+Why: the tested G1 variants explicitly select legacy preprocessing; the capture
+bench/runner support isolated CAPTURE_DIR; the host decoder supports selecting
+the intended golden; G2.1 golden is retained for historical/stale-golden checks.
+The current regression depends on this local baseline, so staging only G2.3
+files against HEAD would not preserve the complete tested verification setup.
+These are carryover changes to review separately, not changes authored in G2.3.
+
+Recommended review set:27 exact paths above. Do not use git add . or git add -A.
+Do not stage Bao_rom.gprj.user, original impl/, generated simulation libraries,
+waveforms/captures/vectors/checkpoints/build directories, or earlier review
+patches/reports as part of this set. The two new .gitignore files intentionally
+keep generated G2.3 evidence local. Earlier work remains available unchanged.
+
+Reproduce (choose fresh output paths to preserve this evidence):
+ python -I src/g23_reference.py --check
+ python -I sim/run_g23.py --out sim/g23_results/another_run
+ python -I sim/run_g23_gowin.py --regression sim/g23_results/another_run --out sim/g23_results/another_build
+Explicit golden generation, when intentionally needed: python -I src/g23_reference.py
+Regression never regenerates packet golden; only independent directed vectors.
+
+Remaining limitations:
+- Positive fixed-threshold local maxima are a heuristic, not a clinically
+  validated QRS detector. Negative-polarity R waves, baseline drift/noise/T waves
+  and flat-top timing can change detections. Threshold80 is in signed digital
+  code units; ROM conversion has no calibrated physical ECG voltage units.
+- No MIT-BIH .atr/.hea annotations were supplied in this workspace; annotation
+  comparison was not run. No sensitivity/specificity or diagnostic claim.
+- No hardware test; no analog acquisition, actual UART-pin/clock or board power
+  validation. Actual360Hz complete ROM elapsed-time simulation was not run.
+- Current transport/MLP has no explicit validity mask or clipping metadata.
+  Existing trained feature statistics would need a coordinated update; weights
+  remain placeholders and no trained-model integration was started.
+- Existing circular-window RAM must be read before subsequent writes move its
+  read base;360Hz and20kHz satisfy this, arbitrary faster streams are unsupported.
+- Existing window samples_collected is32-bit and win_index16-bit; their long-run
+  rollover behavior is unchanged. RR timestamps themselves are64-bit and tested
+  beyond65535, but this does not certify indefinite end-to-end stream operation.
+- Acquisition stalls do not age sample-count validity. Live valid threshold
+  changes are applied at confirmation time, without creating a reset epoch.
+- G2.2 f_rms keeps integer/F=0 quantization and crest uses floored internal Q8.8
+  RMS as contracted. Those documented quantization limits are unchanged.
+
+Stop at G2.3. No commit/push/merge/rebase/branch switch performed.

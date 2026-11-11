@@ -43,7 +43,9 @@ module window_buffer #(
     output reg               window_ready,
     output reg               ready_bank,     // Alias for window_ready (backward compat)
     output reg  [31:0]       samples_collected,
-    output reg  [8:0]        sample_cnt      // Debug
+    output reg  [8:0]        sample_cnt,     // Debug
+    output wire signed [DATA_WIDTH-1:0] stream_sample,
+    output wire             stream_accept
 );
 
     // =============================================================================
@@ -60,6 +62,9 @@ module window_buffer #(
     // Offset-binary to two's-complement conversion only inverts the MSB.
     // No sample register/latency is added. A real ADC uses a separate offset.
     wire signed [DATA_WIDTH-1:0] preprocessed_sample;
+    // RR observes precisely the chronological RAM writes, without added latency.
+    assign stream_sample = preprocessed_sample;
+    assign stream_accept = rst_n && !soft_reset && enable && sample_valid;
     generate
         if (PREPROCESS_MODE == 0) begin : G_LEGACY
             localparam [DATA_WIDTH-1:0] BASELINE_OFF_W = BASELINE_OFFSET;

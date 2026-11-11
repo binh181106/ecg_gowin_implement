@@ -5,7 +5,7 @@ module tb_g1_class_uart;
     reg rst_n=0, stimulus_done=0;
     reg [1:0] stimulus_class=0;
     wire tx;
-    top_ecg_rom_demo #(.ROM_HEX("src/ecg_rom.hex")) dut (
+    top_ecg_rom_demo #(.ROM_HEX("src/ecg_rom.hex"), .PREPROCESS_MODE(0)) dut (
         .sys_clk(clk), .sys_rst_n(rst_n), .uart_txd(tx), .uart_rxd(1'b1),
         .status_led(), .demo_done(), .demo_overflow(), .demo_class());
     GSR GSR (.GSRI(rst_n));

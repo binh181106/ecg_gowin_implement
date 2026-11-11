@@ -13,6 +13,7 @@
         <File path="src/demo_uart_packetizer.v" type="file.verilog" enable="1"/>
         <File path="src/ecg_rom.v" type="file.verilog" enable="1"/>
         <File path="src/feature_extraction.v" type="file.verilog" enable="1"/>
+        <File path="src/rr_tracker.v" type="file.verilog" enable="1"/>
         <File path="src/gowin_dpb/gowin_dpb.v" type="file.verilog" enable="1"/>
         <File path="src/gowin_sdpb/gowin_sdpb.v" type="file.verilog" enable="1"/>
         <File path="src/sample_pacer.v" type="file.verilog" enable="1"/>

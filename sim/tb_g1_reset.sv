@@ -5,6 +5,7 @@ module tb_g1_reset;
     reg rst_n=0;
     wire tx, overflow;
     top_ecg_rom_demo #(.CLK_HZ(50_000_000), .TARGET_HZ(20_000),
+        .PREPROCESS_MODE(0), // frozen G1 numerical checkpoint, unchanged golden
         .ROM_HEX("src/ecg_rom.hex")) dut (.sys_clk(clk), .sys_rst_n(rst_n),
         .uart_txd(tx), .uart_rxd(1'b1), .status_led(), .demo_done(),
         .demo_overflow(overflow), .demo_class());
