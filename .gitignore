@@ -1,0 +1,4 @@
+# Python bytecode caches (created when the runner is invoked with -I off,
+# or by an IDE). Never part of the source.
+__pycache__/
+*.pyc

@@ -12,18 +12,43 @@ import shutil
 import subprocess
 
 ROOT=Path(__file__).resolve().parents[1]
-RESULTS=ROOT/"sim/g23_results"
+# The build/regression directories must live on a path WITHOUT SPACES:
+# ModelSim re-opens the -modelsimini file while loading a design and fails
+# with (vsim-7) EINVAL on a spaced path. This repository is normally checked
+# out under "H:\IC Design\...", so the default results root is redirected to a
+# space-free location; both roots are accepted.
+RESULTS=Path("C:/g3out/gowin_results")
 TOOL=Path("C:/Gowin/Gowin_V1.9.12.01_x64/IDE/bin/gw_sh.exe")
+
+
+def _allowed_root(path):
+    """Accept either the space-free results root or the in-repo one."""
+    for root in (RESULTS, ROOT/"sim/g23_results"):
+        try:
+            path.relative_to(root)
+            return True
+        except ValueError:
+            continue
+    return False
 
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out",type=Path,default=RESULTS/"gowin_build")
     parser.add_argument("--regression",type=Path,default=RESULTS/"final")
-    args=parser.parse_args(); build=args.out.resolve(); build.relative_to(RESULTS)
-    regression=args.regression.resolve(); regression.relative_to(RESULTS)
+    args=parser.parse_args(); build=args.out.resolve()
+    regression=args.regression.resolve()
+    if not _allowed_root(build) or not _allowed_root(regression):
+        raise SystemExit("--out and --regression must be under "
+                         f"{RESULTS} or {ROOT/'sim/g23_results'}")
+    if " " in build.as_posix() or " " in regression.as_posix():
+        raise SystemExit("--out/--regression paths must not contain spaces (ModelSim/vsim-7)")
     summary=(regression/"summary.txt").read_text()
-    assert summary.count(": PASS")==25 and ": FAIL" not in summary
+    # G3 adds the g3_mlp group, so the full G2.3 suite is now 27 groups
+    # (20 simulation + 5 python invariants + decoder_selftest +
+    # decoder_captures). Require the G3 group to have actually run.
+    assert summary.count(": PASS")==27 and ": FAIL" not in summary
+    assert "g3_mlp: PASS" in summary, "G3 MLP group did not run"
     assert "protected inputs unchanged: True" in summary
     for name,sha in json.loads((regression/"input_sha256.json").read_text()).items():
         assert hashlib.sha256((ROOT/name).read_bytes()).hexdigest()==sha,"Tested input changed: "+name

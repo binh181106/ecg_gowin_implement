@@ -44,6 +44,7 @@ TESTS.update({
     "replay":("tb_g23_replay","G23 REPLAY PASS",[]),
     "windows":("tb_g23_windows","G23 WINDOWS PASS",[]),
     "reset_faults":("tb_g22_reset_faults","G22 RESET FAULTS PASS",[]),
+    "g3_mlp":("tb_g3_mlp","G3 MLP PASS",[]),
 })
 
 
@@ -137,7 +138,14 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out",type=Path,default=DEFAULT_OUT)
     parser.add_argument("--tests",nargs="+",choices=TESTS)
-    args=parser.parse_args(); out=args.out.resolve(); out.relative_to(ROOT)
+    args=parser.parse_args(); out=args.out.resolve()
+    # This machine's repo sits under "H:\IC Design\..." which contains a
+    # space; ModelSim re-opens the -modelsimini file while loading a design
+    # and fails with (vsim-7) EINVAL on a spaced path. The simulation
+    # directories (work lib, ini, logs, captures) must therefore be on a
+    # space-free path: pass --out C:/g3out/final or similar.
+    if " " in out.as_posix():
+        raise SystemExit(f"--out path must not contain spaces (ModelSim/vsim-7): {out}")
     out.mkdir(parents=True,exist_ok=True)
     before=source_hashes(); summary=[]; failed=[]
     commands=out/"commands.txt"; commands.write_text("")
@@ -151,32 +159,52 @@ def main():
         if content: (out/(name+".log")).write_text(content,encoding="utf-8")
         if not ok: failed.append(name)
     # Run invariants and generate only directed vectors, never packet golden.
-    for name,cmd in [
+    names=args.tests or list(TESTS)
+    gen=[
         ("python_preprocess",["sim/gen_g21_vectors.py"]),
         ("python_arithmetic",["sim/gen_g22_vectors.py"]),
         ("python_stream",["sim/gen_g23_vectors.py"]),
         ("python_golden",["src/g23_reference.py","--check"]),
-    ]:
+    ]
+    if "g3_mlp" in names:
+        gen.append(("python_mlp",["sim/gen_g3_mlp_vectors.py"]))
+    for name,cmd in gen:
         result=run([sys.executable,"-I",*cmd]); record(name,result.returncode==0,result.stdout+result.stderr)
         if result.returncode: raise RuntimeError(result.stdout+result.stderr)
-    names=args.tests or list(TESTS)
     benches=adapt_benches(names,out)
     questa=Path("C:/MentorGraphics/win64")
     prim=Path("C:/Gowin/Gowin_V1.9.12.01_x64/IDE/simlib/gw5a/prim_sim.v")
     lib=out/"work"; ini=out/"modelsim.ini"; macro=out/"run.do"
-    ini.write_text("[Library]\nwork = "+lib.as_posix()+"\nothers = C:/MentorGraphics/modelsim.ini\n")
+    # ModelSim SE forces -novopt; this build reports the deprecation notice
+    # (vlog-12110, suppressible) as an error and exits 1 even on success.
+    # Suppress the message in the generated ini.
+    # The SystemVerilog "std" package lives in the sv_std library, which the
+    # stock modelsim.ini maps via $MODEL_TECH. Map it explicitly so the build
+    # does not depend on the include path being resolvable.
+    sv_std=(questa.parent/"sv_std")
+    ini.write_text("[Library]\nwork = "+lib.as_posix()
+                  +"\nsv_std = "+sv_std.as_posix()
+                  +"\n[msg_system]\nsuppress = 12110\n")
     macro.write_text("onerror {quit -code 1 -f}\nonbreak {quit -code 1 -f}\nrun -all\nquit -code 0 -f\n")
     if not lib.exists():
         result=run([questa/"vlib.exe",lib]); assert result.returncode==0,result.stdout
+    # Gowin prim_sim.v must be compiled as Verilog-2001: under -sv the
+    # identifier "std" in its port declarations is parsed as a package
+    # import and every module fails with (vlog-13006).
+    result=run([questa/"vlog.exe","-modelsimini",ini,"-work","work",
+                "-l",out/"compile_prim.log",prim])
+    if result.returncode: raise RuntimeError(result.stdout+result.stderr)
     result=run([questa/"vlog.exe","-modelsimini",ini,"-sv","-work","work","+incdir+.",
-                "-l",out/"compile.log",prim,*[ROOT/"src"/p for p in g1.RTL+["rr_tracker.v"]],*benches])
+                "-l",out/"compile.log",*[ROOT/"src"/p for p in g1.RTL+["rr_tracker.v"]],*benches])
     if result.returncode: raise RuntimeError(result.stdout+result.stderr)
     print("PASS compile",flush=True)
     for name in names:
         bench,marker,extra=TESTS[name]; log=out/(name+".log")
+        # Tcl "do" needs forward slashes; backslashes become escape chars.
+        do_path=(macro.relative_to(ROOT).as_posix() if macro.is_relative_to(ROOT) else macro.as_posix())
         result=run([questa/"vsim.exe","-modelsimini",ini,"-c","-onfinish","exit", "-l",log,
                     "-wlf",out/(name+".wlf"),"work."+bench,*extra,"+CAPTURE_DIR="+out.as_posix(),
-                    "-do","do "+macro.relative_to(ROOT).as_posix()])
+                    "-do","do "+do_path])
         content=log.read_text(errors="replace") if log.exists() else result.stdout
         ok=result.returncode==0 and marker in content and "** Fatal:" not in content
         record(name,ok)
